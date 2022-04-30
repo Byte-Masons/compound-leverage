@@ -5,12 +5,12 @@ require('solidity-coverage');
 require('@openzeppelin/hardhat-upgrades');
 require('hardhat-contract-sizer');
 
-const { devAccount } = require('./secrets.json');
+const { devAccount, rpc } = require('./secrets.json');
 
 module.exports = {
   networks: {
-    opera: {
-      url: 'https://late-wild-fire.fantom.quiknode.pro/',
+    aurora: {
+      url: rpc,
       accounts: [devAccount],
     },
   },
