@@ -1,7 +1,7 @@
 const hre = require('hardhat');
 
 async function main() {
-  const vaultAddress = '0xC2cE269f3646a5F5bF1cCDa73c6cAB50f64012b6';
+  const vaultAddress = '';
 
   const Strategy = await ethers.getContractFactory('ReaperStrategyCompoundLeverage');
   const treasuryAddress = '0x17D099fc623bd06CFE4861d874704Af184773c75';
@@ -12,8 +12,7 @@ async function main() {
   const superAdmin = '0x04C710a1E8a738CDf7cAD3a52Ba77A784C35d8CE';
   const admin = '0x539eF36C804e4D735d8cAb69e8e441c12d4B88E0';
   const guardian = '0xf20E25f2AB644C8ecBFc992a6829478a85A98F2c';
-  //const scUSDC = "0xE45Ac34E528907d0A0239ab5Db507688070B20bf";
-  const scfUSDT = '0x02224765bc8d54c21bb51b0951c80315e1c263f9';
+  const cWant = '0x4E8fE8fd314cFC09BDb0942c5adCC37431abDCD0';
 
   // const options = { gasPrice: 2000000000000, gasLimit: 9000000 };
 
@@ -24,7 +23,7 @@ async function main() {
       [treasuryAddress, paymentSplitterAddress],
       [strategist1, strategist2, strategist3],
       [superAdmin, admin, guardian],
-      scfUSDT,
+      cWant,
     ],
     { kind: 'uups' },
   );
