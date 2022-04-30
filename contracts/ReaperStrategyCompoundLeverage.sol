@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import './abstract/ReaperBaseStrategy.sol';
+import './abstract/ReaperBaseStrategyv2.sol';
 import './interfaces/IUniswapRouter.sol';
 import './interfaces/CErc20I.sol';
 import './interfaces/IComptroller.sol';
@@ -12,7 +12,7 @@ pragma solidity 0.8.11;
 /**
  * @dev This strategy will deposit and leverage a token on Compound to maximize yield by farming reward tokens
  */
-contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
+contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     /**
@@ -88,16 +88,17 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         address _vault,
         address[] memory _feeRemitters,
         address[] memory _strategists,
+        address[] memory _multisigRoles,
         address _cWant
     ) public initializer {
-        __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists);
+        __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists, _multisigRoles);
         cWant = CErc20I(_cWant);
         markets = [_cWant];
         comptroller = IComptroller(cWant.comptroller());
         want = cWant.underlying();
         nativeToWantRoute = [nativeToken, want];
         rewardToNativeRoute = [rewardToken, nativeToken];
-        
+
         targetLTV = 0.72 ether;
         allowedLTVDrift = 0.01 ether;
         balanceOfPool = 0;
@@ -111,9 +112,24 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         isDualRewardActive = true;
         dualRewardIndex = 1;
 
-        _giveAllowances();
-
         comptroller.enterMarkets(markets);
+    }
+
+    /**
+     * @dev Function that puts the funds to work.
+     * It gets called whenever someone supplied in the strategy's vault contract.
+     * It supplies {want} Compound to farm {rewardToken}
+     */
+    function _deposit() internal override doUpdateBalance {
+        IERC20Upgradeable(want).safeIncreaseAllowance(address(cWant), balanceOfWant());
+        CErc20I(cWant).mint(balanceOfWant());
+        uint256 _ltv = _calculateLTV();
+
+        if (_shouldLeverage(_ltv)) {
+            _leverMax();
+        } else if (_shouldDeleverage(_ltv)) {
+            _deleverage(0);
+        }
     }
 
     /**
@@ -121,9 +137,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * It withdraws {want} from Compound
      * The available {want} minus fees is returned to the vault.
      */
-    function withdraw(uint256 _withdrawAmount) external doUpdateBalance {
-        require(msg.sender == vault);
-
+    function _withdraw(uint256 _withdrawAmount) internal override doUpdateBalance {
         uint256 _ltv = _calculateLTVAfterWithdraw(_withdrawAmount);
 
         if (_shouldLeverage(_ltv)) {
@@ -139,6 +153,130 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
             // LTV is in the acceptable range so the underlying can be withdrawn directly
             _withdrawUnderlyingToVault(_withdrawAmount);
         }
+    }
+
+    /**
+     * @dev Core function of the strat, in charge of collecting and re-investing rewards.
+     * @notice Assumes the deposit will take care of the TVL rebalancing.
+     * 1. Claims {rewardToken} from the comptroller.
+     * 2. Swaps {rewardToken} to {nativeToken}.
+     * 3. Claims fees for the harvest caller and treasury.
+     * 4. Swaps the {nativeToken} token for {want}
+     * 5. Deposits.
+     */
+    function _harvestCore() internal override {
+        _claimRewards();
+        _swapRewardsToNative();
+        _chargeFees();
+        _swapToWant();
+        deposit();
+    }
+
+    /**
+     * @dev Core harvest function.
+     * Get rewards from markets entered
+     */
+    function _claimRewards() internal {
+        IRewardDistributor(REWARD_DISTRIBUTOR).claimReward(0, payable(address(this)), markets);
+        if (isDualRewardActive) {
+            IRewardDistributor(REWARD_DISTRIBUTOR).claimReward(dualRewardIndex, payable(address(this)), markets);
+        }
+    }
+
+    /**
+     * @dev Core harvest function.
+     * Swaps {rewardToken} and {dualRewardToken} to {nativeToken}
+     */
+    function _swapRewardsToNative() internal {
+        uint256 rewardBalance = IERC20Upgradeable(rewardToken).balanceOf(address(this));
+        if (rewardBalance >= minRewardToSell) {
+            _swap(rewardBalance, rewardToNativeRoute);
+        }
+        uint256 dualRewardBalance = IERC20Upgradeable(dualRewardToken).balanceOf(address(this));
+        if (dualRewardBalance >= minRewardToSell && nativeToken != dualRewardToken) {
+            _swap(dualRewardBalance, dualRewardToNativeRoute);
+        }
+    }
+
+    /**
+     * @dev Helper function to swap tokens given an {_amount} and swap {_path}.
+     */
+    function _swap(uint256 _amount, address[] memory _path) internal {
+        if (_path.length < 2 || _amount == 0 || (_path[0] == _path[_path.length - 1])) {
+            return;
+        }
+
+        IERC20Upgradeable(_path[0]).safeIncreaseAllowance(UNI_ROUTER, _amount);
+        IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            _amount,
+            0,
+            _path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    /**
+     * @dev Core harvest function.
+     * Charges fees based on the amount of nativeToken gained from reward
+     */
+    function _chargeFees() internal {
+        uint256 nativeFee = (IERC20Upgradeable(nativeToken).balanceOf(address(this)) * totalFee) / PERCENT_DIVISOR;
+        if (nativeFee != 0) {
+            uint256 callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
+            uint256 treasuryFeeToVault = (nativeFee * treasuryFee) / PERCENT_DIVISOR;
+            uint256 feeToStrategist = (treasuryFeeToVault * strategistFee) / PERCENT_DIVISOR;
+            treasuryFeeToVault -= feeToStrategist;
+
+            IERC20Upgradeable(nativeToken).safeTransfer(msg.sender, callFeeToUser);
+            IERC20Upgradeable(nativeToken).safeTransfer(treasury, treasuryFeeToVault);
+            IERC20Upgradeable(nativeToken).safeTransfer(strategistRemitter, feeToStrategist);
+        }
+    }
+
+    /**
+     * @dev Core harvest function.
+     * Swaps {nativeToken} for {want}
+     */
+    function _swapToWant() internal {
+        if (want == nativeToken) {
+            return;
+        }
+
+        uint256 nativeBalance = IERC20Upgradeable(nativeToken).balanceOf(address(this));
+        if (nativeBalance != 0) {
+            _swap(nativeBalance, nativeToWantRoute);
+        }
+    }
+
+    /**
+     * @dev Calculates the total amount of {want} held by the strategy
+     * which is the balance of want + the total amount supplied to Compound.
+     */
+    function balanceOf() public view override returns (uint256) {
+        return balanceOfWant() + balanceOfPool;
+    }
+
+    /**
+     * @dev Calculates the balance of want held directly by the strategy
+     */
+    function balanceOfWant() public view returns (uint256) {
+        return IERC20Upgradeable(want).balanceOf(address(this));
+    }
+
+    /**
+     * @dev Returns the approx amount of profit from harvesting.
+     *      Profit is denominated in nativeToken, and takes fees into account.
+     */
+    function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
+        uint256 rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(0, address(this));
+        if (rewards == 0) {
+            return (0, 0);
+        }
+        profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
+        uint256 nativeFee = (profit * totalFee) / PERCENT_DIVISOR;
+        callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
+        profit -= nativeFee;
     }
 
     /**
@@ -159,25 +297,10 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     }
 
     /**
-     * @dev Returns the approx amount of profit from harvesting.
-     *      Profit is denominated in nativeToken, and takes fees into account.
-     */
-    function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
-        uint256 rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(0, address(this));
-        if (rewards == 0) {
-            return (0, 0);
-        }
-        profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
-        uint256 nativeFee = (profit * totalFee) / PERCENT_DIVISOR;
-        callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
-        profit -= nativeFee;
-    }
-
-    /**
      * @dev Emergency function to deleverage in case regular deleveraging breaks
      */
     function manualDeleverage(uint256 amount) external doUpdateBalance {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         require(cWant.redeemUnderlying(amount) == 0);
         require(cWant.repayBorrow(amount) == 0);
     }
@@ -186,7 +309,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Emergency function to deleverage in case regular deleveraging breaks
      */
     function manualReleaseWant(uint256 amount) external doUpdateBalance {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         require(cWant.redeemUnderlying(amount) == 0);
     }
 
@@ -195,10 +318,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * Should be in units of 1e18
      */
     function setTargetLtv(uint256 _ltv) external {
-        if (!hasRole(KEEPER, msg.sender)) {
-            _onlyStrategistOrOwner();
-        }
-
+        _atLeastRole(KEEPER);
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
         require(collateralFactorMantissa > _ltv + allowedLTVDrift);
         require(_ltv <= (collateralFactorMantissa * LTV_SAFETY_ZONE) / MANTISSA);
@@ -210,7 +330,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * Should be in units of 1e18
      */
     function setAllowedLtvDrift(uint256 _drift) external {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
         require(collateralFactorMantissa > targetLTV + _drift);
         allowedLTVDrift = _drift;
@@ -220,7 +340,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets a new borrow depth (how many loops for leveraging+deleveraging)
      */
     function setBorrowDepth(uint8 _borrowDepth) external {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         require(_borrowDepth <= maxBorrowDepth);
         borrowDepth = _borrowDepth;
     }
@@ -229,7 +349,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets the minimum reward the will be sold (too little causes revert from Uniswap)
      */
     function setMinScreamToSell(uint256 _minScreamToSell) external {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         minRewardToSell = _minScreamToSell;
     }
 
@@ -237,7 +357,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets the minimum want to leverage/deleverage (loop) for
      */
     function setMinWantToLeverage(uint256 _minWantToLeverage) external {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         minWantToLeverage = _minWantToLeverage;
     }
 
@@ -245,7 +365,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets the maximum slippage authorized when withdrawing
      */
     function setWithdrawSlippageTolerance(uint256 _withdrawSlippageTolerance) external {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         withdrawSlippageTolerance = _withdrawSlippageTolerance;
     }
 
@@ -253,7 +373,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets the swap path to go from {nativeToken} to {want}.
      */
     function setNativeToWantRoute(address[] calldata _newNativeToWantRoute) external {
-        _onlyStrategistOrOwner();
+        _atLeastRole(STRATEGIST);
         require(_newNativeToWantRoute[0] == nativeToken, 'bad route');
         require(_newNativeToWantRoute[_newNativeToWantRoute.length - 1] == want, 'bad route');
         delete nativeToWantRoute;
@@ -263,8 +383,13 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Configure variables for the dual reward
      */
-    function configureDualReward(bool _isDualRewardActive, address _dualRewardToken, uint8 _dualRewardIndex, address[] calldata _newDualRewardToNativeRoute) external {
-        _onlyStrategistOrOwner();
+    function configureDualReward(
+        bool _isDualRewardActive,
+        address _dualRewardToken,
+        uint8 _dualRewardIndex,
+        address[] calldata _newDualRewardToNativeRoute
+    ) external {
+        _atLeastRole(STRATEGIST);
         require(_newDualRewardToNativeRoute[0] == _dualRewardToken, 'bad route');
         require(_newDualRewardToNativeRoute[_newDualRewardToNativeRoute.length - 1] == nativeToken, 'bad route');
         isDualRewardActive = _isDualRewardActive;
@@ -281,8 +406,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      *
      * Note: this is not an emergency withdraw function. For that, see panic().
      */
-    function retireStrat() external doUpdateBalance {
-        _onlyStrategistOrOwner();
+    function _retireStrat() internal override doUpdateBalance {
         _claimRewards();
         _swapRewardsToNative();
         _swapToWant();
@@ -292,64 +416,10 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     }
 
     /**
-     * @dev Pauses supplied. Withdraws all funds from Compound, leaving rewards behind.
+     * @dev Withdraws all funds from Compound, leaving rewards behind.
      */
-    function panic() external doUpdateBalance {
-        _onlyStrategistOrOwner();
+    function _reclaimWant() internal override doUpdateBalance {
         _deleverage(type(uint256).max);
-        pause();
-    }
-
-    /**
-     * @dev Unpauses the strat.
-     */
-    function unpause() external {
-        _onlyStrategistOrOwner();
-        _unpause();
-
-        _giveAllowances();
-
-        deposit();
-    }
-
-    /**
-     * @dev Pauses the strat.
-     */
-    function pause() public {
-        _onlyStrategistOrOwner();
-        _pause();
-        _removeAllowances();
-    }
-
-    /**
-     * @dev Function that puts the funds to work.
-     * It gets called whenever someone supplied in the strategy's vault contract.
-     * It supplies {want} Compound to farm {rewardToken}
-     */
-    function deposit() public whenNotPaused doUpdateBalance {
-        CErc20I(cWant).mint(balanceOfWant());
-        uint256 _ltv = _calculateLTV();
-
-        if (_shouldLeverage(_ltv)) {
-            _leverMax();
-        } else if (_shouldDeleverage(_ltv)) {
-            _deleverage(0);
-        }
-    }
-
-    /**
-     * @dev Calculates the total amount of {want} held by the strategy
-     * which is the balance of want + the total amount supplied to Compound.
-     */
-    function balanceOf() public view override returns (uint256) {
-        return balanceOfWant() + balanceOfPool;
-    }
-
-    /**
-     * @dev Calculates the balance of want held directly by the strategy
-     */
-    function balanceOfWant() public view returns (uint256) {
-        return IERC20Upgradeable(want).balanceOf(address(this));
     }
 
     /**
@@ -610,120 +680,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
             //our borrow has been increased by no more than maxDeleverage
             cWant.repayBorrow(deleveragedAmount);
         }
-    }
-
-    /**
-     * @dev Core function of the strat, in charge of collecting and re-investing rewards.
-     * @notice Assumes the deposit will take care of the TVL rebalancing.
-     * 1. Claims {rewardToken} from the comptroller.
-     * 2. Swaps {rewardToken} to {nativeToken}.
-     * 3. Claims fees for the harvest caller and treasury.
-     * 4. Swaps the {nativeToken} token for {want}
-     * 5. Deposits.
-     */
-    function _harvestCore() internal override {
-        _claimRewards();
-        _swapRewardsToNative();
-        _chargeFees();
-        _swapToWant();
-        deposit();
-    }
-
-    /**
-     * @dev Core harvest function.
-     * Get rewards from markets entered
-     */
-    function _claimRewards() internal {
-        IRewardDistributor(REWARD_DISTRIBUTOR).claimReward(0, payable(address(this)), markets);
-        if (isDualRewardActive) {
-            IRewardDistributor(REWARD_DISTRIBUTOR).claimReward(dualRewardIndex, payable(address(this)), markets);
-        }
-    }
-
-    /**
-     * @dev Helper function to swap tokens given an {_amount} and swap {_path}.
-     */
-    function _swap(uint256 _amount, address[] memory _path) internal {
-        if (_path.length < 2 || _amount == 0 || (_path[0] == _path[_path.length - 1])) {
-            return;
-        }
-
-        IERC20Upgradeable(_path[0]).safeIncreaseAllowance(UNI_ROUTER, _amount);
-        IUniswapV2Router02(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
-            _amount,
-            0,
-            _path,
-            address(this),
-            block.timestamp
-        );
-    }
-
-    /**
-     * @dev Core harvest function.
-     * Swaps {rewardToken} and {dualRewardToken} to {nativeToken}
-     */
-    function _swapRewardsToNative() internal {
-        uint256 rewardBalance = IERC20Upgradeable(rewardToken).balanceOf(address(this));
-        if (rewardBalance >= minRewardToSell) {
-            _swap(rewardBalance, rewardToNativeRoute);
-        }
-        uint256 dualRewardBalance = IERC20Upgradeable(dualRewardToken).balanceOf(address(this));
-        if (dualRewardBalance >= minRewardToSell && nativeToken != dualRewardToken) {
-            _swap(dualRewardBalance, dualRewardToNativeRoute);
-        }
-    }
-
-    /**
-     * @dev Core harvest function.
-     * Charges fees based on the amount of nativeToken gained from reward
-     */
-    function _chargeFees() internal {
-        uint256 nativeFee = (IERC20Upgradeable(nativeToken).balanceOf(address(this)) * totalFee) / PERCENT_DIVISOR;
-        if (nativeFee != 0) {
-            uint256 callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
-            uint256 treasuryFeeToVault = (nativeFee * treasuryFee) / PERCENT_DIVISOR;
-            uint256 feeToStrategist = (treasuryFeeToVault * strategistFee) / PERCENT_DIVISOR;
-            treasuryFeeToVault -= feeToStrategist;
-
-            IERC20Upgradeable(nativeToken).safeTransfer(msg.sender, callFeeToUser);
-            IERC20Upgradeable(nativeToken).safeTransfer(treasury, treasuryFeeToVault);
-            IERC20Upgradeable(nativeToken).safeTransfer(strategistRemitter, feeToStrategist);
-        }
-    }
-
-    /**
-     * @dev Core harvest function.
-     * Swaps {nativeToken} for {want}
-     */
-    function _swapToWant() internal {
-        if (want == nativeToken) {
-            return;
-        }
-
-        uint256 nativeBalance = IERC20Upgradeable(nativeToken).balanceOf(address(this));
-        if (nativeBalance != 0) {
-            _swap(nativeBalance, nativeToWantRoute);
-        }
-    }
-
-    /**
-     * @dev Gives the necessary allowances to mint cWant, swap rewards etc
-     */
-    function _giveAllowances() internal {
-        IERC20Upgradeable(want).safeIncreaseAllowance(
-            address(cWant),
-            type(uint256).max - IERC20Upgradeable(want).allowance(address(this), address(cWant))
-        );
-    }
-
-    /**
-     * @dev Removes all allowance that were given
-     */
-    function _removeAllowances() internal {
-        IERC20Upgradeable(want).safeDecreaseAllowance(
-            address(cWant),
-            IERC20Upgradeable(want).allowance(address(this), address(cWant))
-        );
     }
 
     /**

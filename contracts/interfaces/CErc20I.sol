@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.11;
 
-import "./CTokenI.sol";
+import './CTokenI.sol';
 
 interface CErc20I is CTokenI {
     function mint(uint256 mintAmount) external returns (uint256);
@@ -15,9 +15,7 @@ interface CErc20I is CTokenI {
 
     function repayBorrow(uint256 repayAmount) external returns (uint256);
 
-    function repayBorrowBehalf(address borrower, uint256 repayAmount)
-        external
-        returns (uint256);
+    function repayBorrowBehalf(address borrower, uint256 repayAmount) external returns (uint256);
 
     function liquidateBorrow(
         address borrower,
