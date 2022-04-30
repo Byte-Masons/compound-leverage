@@ -1,21 +1,21 @@
 {
-  "name": "scream-flashloan",
+  "name": "compound-leverage",
   "version": "1.0.0",
-  "description": "A single staking leverage farming strategy for Scream using flashloans",
+  "description": "A single staking leverage farming strategy for Compound",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/m-brantheim/scream-flashloan.git"
+    "url": "git+https://github.com/Byte-Masons/compound-leverage.git"
   },
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/m-brantheim/scream-flashloan/issues"
+    "url": "https://github.com/Byte-Masons/compound-leverage/issues"
   },
-  "homepage": "https://github.com/m-brantheim/scream-flashloan#readme",
+  "homepage": "https://github.com/Byte-Masons/compound-leverage#readme",
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.0",
     "@nomiclabs/hardhat-etherscan": "^2.1.3",

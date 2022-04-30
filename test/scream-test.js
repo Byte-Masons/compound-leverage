@@ -83,7 +83,7 @@ describe('Vaults', function () {
     console.log('addresses');
 
     //get artifacts
-    Strategy = await ethers.getContractFactory('ReaperAutoCompoundScreamLeverage');
+    Strategy = await ethers.getContractFactory('ReaperAutoCompoundCompoundLeverage');
     Vault = await ethers.getContractFactory('ReaperVaultv1_3');
     Treasury = await ethers.getContractFactory('ReaperTreasury');
     Want = await ethers.getContractFactory('@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20');
@@ -488,44 +488,6 @@ describe('Vaults', function () {
       const hasCallFee = callFeeToUser.gt(0);
       expect(hasProfit).to.equal(true);
       expect(hasCallFee).to.equal(true);
-    });
-
-    xit('should not allow implementation upgrades before timelock has passed', async function () {
-      await strategy.initiateUpgradeCooldown();
-
-      const StrategyV2 = await ethers.getContractFactory('TestReaperAutoCompoundScreamLeverageV2');
-      await expect(hre.upgrades.upgradeProxy(strategy.address, StrategyV2)).to.be.revertedWith(
-        'cooldown not initiated or still active',
-      );
-    });
-
-    xit('should allow implementation upgrades once timelock has passed', async function () {
-      const StrategyV2 = await ethers.getContractFactory('TestReaperAutoCompoundScreamLeverageV2');
-      const timeToSkip = (await strategy.UPGRADE_TIMELOCK()).add(10);
-      await strategy.initiateUpgradeCooldown();
-      await moveTimeForward(timeToSkip.toNumber());
-      await hre.upgrades.upgradeProxy(strategy.address, StrategyV2);
-    });
-
-    xit('successive upgrades need to initiate timelock again', async function () {
-      const StrategyV2 = await ethers.getContractFactory('TestReaperAutoCompoundScreamLeverageV2');
-      const timeToSkip = (await strategy.UPGRADE_TIMELOCK()).add(10);
-      await strategy.initiateUpgradeCooldown();
-      await moveTimeForward(timeToSkip.toNumber());
-      await hre.upgrades.upgradeProxy(strategy.address, StrategyV2);
-
-      const StrategyV3 = await ethers.getContractFactory('TestReaperAutoCompoundScreamLeverageV3');
-      await expect(hre.upgrades.upgradeProxy(strategy.address, StrategyV3)).to.be.revertedWith(
-        'cooldown not initiated or still active',
-      );
-
-      await strategy.initiateUpgradeCooldown();
-      await expect(hre.upgrades.upgradeProxy(strategy.address, StrategyV3)).to.be.revertedWith(
-        'cooldown not initiated or still active',
-      );
-
-      await moveTimeForward(timeToSkip.toNumber());
-      await hre.upgrades.upgradeProxy(strategy.address, StrategyV3);
     });
 
     it('should be able to set withdraw slippage tolerance', async function () {
