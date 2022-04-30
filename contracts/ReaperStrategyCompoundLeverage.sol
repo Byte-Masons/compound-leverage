@@ -641,19 +641,35 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     }
 
     /**
+     * @dev Helper function to swap tokens given an {_amount} and swap {_path}.
+     */
+    function _swap(uint256 _amount, address[] memory _path) internal {
+        if (_path.length < 2 || _amount == 0 || (_path[0] == _path[_path.length - 1])) {
+            return;
+        }
+
+        IERC20Upgradeable(_path[0]).safeIncreaseAllowance(UNI_ROUTER, _amount);
+        IUniswapV2Router02(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            _amount,
+            0,
+            _path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    /**
      * @dev Core harvest function.
-     * Swaps {rewardToken} to {nativeToken}
+     * Swaps {rewardToken} and {dualRewardToken} to {nativeToken}
      */
     function _swapRewardsToNative() internal {
-        uint256 screamBalance = IERC20Upgradeable(rewardToken).balanceOf(address(this));
-        if (screamBalance >= minRewardToSell) {
-            IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                screamBalance,
-                0,
-                rewardToNativeRoute,
-                address(this),
-                block.timestamp + 600
-            );
+        uint256 rewardBalance = IERC20Upgradeable(rewardToken).balanceOf(address(this));
+        if (rewardBalance >= minRewardToSell) {
+            _swap(rewardBalance, rewardToNativeRoute);
+        }
+        uint256 dualRewardBalance = IERC20Upgradeable(dualRewardToken).balanceOf(address(this));
+        if (dualRewardBalance >= minRewardToSell && nativeToken != dualRewardToken) {
+            _swap(dualRewardBalance, dualRewardToNativeRoute);
         }
     }
 
@@ -686,13 +702,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
 
         uint256 nativeBalance = IERC20Upgradeable(nativeToken).balanceOf(address(this));
         if (nativeBalance != 0) {
-            IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                nativeBalance,
-                0,
-                nativeToWantRoute,
-                address(this),
-                block.timestamp + 600
-            );
+            _swap(nativeBalance, nativeToWantRoute);
         }
     }
 
@@ -704,14 +714,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
             address(cWant),
             type(uint256).max - IERC20Upgradeable(want).allowance(address(this), address(cWant))
         );
-        IERC20Upgradeable(nativeToken).safeIncreaseAllowance(
-            UNI_ROUTER,
-            type(uint256).max - IERC20Upgradeable(nativeToken).allowance(address(this), UNI_ROUTER)
-        );
-        IERC20Upgradeable(rewardToken).safeIncreaseAllowance(
-            UNI_ROUTER,
-            type(uint256).max - IERC20Upgradeable(rewardToken).allowance(address(this), UNI_ROUTER)
-        );
     }
 
     /**
@@ -721,14 +723,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         IERC20Upgradeable(want).safeDecreaseAllowance(
             address(cWant),
             IERC20Upgradeable(want).allowance(address(this), address(cWant))
-        );
-        IERC20Upgradeable(nativeToken).safeDecreaseAllowance(
-            UNI_ROUTER,
-            IERC20Upgradeable(nativeToken).allowance(address(this), UNI_ROUTER)
-        );
-        IERC20Upgradeable(rewardToken).safeDecreaseAllowance(
-            UNI_ROUTER,
-            IERC20Upgradeable(rewardToken).allowance(address(this), UNI_ROUTER)
         );
     }
 
