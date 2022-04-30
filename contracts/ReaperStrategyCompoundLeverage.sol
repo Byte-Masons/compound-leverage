@@ -348,9 +348,9 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     /**
      * @dev Sets the minimum reward the will be sold (too little causes revert from Uniswap)
      */
-    function setMinScreamToSell(uint256 _minScreamToSell) external {
+    function setMinRewardToSell(uint256 _minRewardToSell) external {
         _atLeastRole(STRATEGIST);
-        minRewardToSell = _minScreamToSell;
+        minRewardToSell = _minRewardToSell;
     }
 
     /**
