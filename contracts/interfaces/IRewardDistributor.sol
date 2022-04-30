@@ -4,7 +4,7 @@ pragma solidity 0.8.11;
 
 import './CTokenI.sol';
 
-interface RewardDistributor {
+interface IRewardDistributor {
     /// @notice Emitted when a new reward supply speed is calculated for a market
     event RewardSupplySpeedUpdated(uint8 rewardType, CTokenI indexed cToken, uint256 newSpeed);
 
@@ -76,4 +76,6 @@ interface RewardDistributor {
     function getRewardAddress(uint256 rewardType) external view returns (address);
 
     function getBlockTimestamp() external view returns (uint256);
+
+    function rewardAccrued(uint8 rewardIndex, address userAddress) external view returns (uint256);
 }

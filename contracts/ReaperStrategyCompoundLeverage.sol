@@ -26,23 +26,28 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      */
     address public constant nativeToken = address(0xC9BdeEd33CD01541e1eeD10f90519d2C06Fe3feB);
     address public constant rewardToken = address(0x9f1F933C660a1DC856F0E0Fe058435879c5CCEf0);
+    address public dualRewardToken;
     address public want;
     CErc20I public cWant;
 
     /**
      * @dev Third Party Contracts:
      * {UNI_ROUTER} - the UNI_ROUTER for target DEX
+     * {REWARD_DISTRIBUTOR} - contract for claiming rewards
      * {comptroller} - Compound contract to enter market and to claim Compound tokens
      */
     address public constant UNI_ROUTER = address(0x2CB45Edb4517d5947aFdE3BEAbF95A582506858B);
+    address public constant REWARD_DISTRIBUTOR = address(0x98E8d4b4F53FA2a2d1b9C651AF919Fc839eE4c1a);
     IComptroller public comptroller;
 
     /**
      * @dev Routes we take to swap tokens
      * {rewardToNativeRoute} - Route we take to get from {rewardToken} into {nativeToken}.
+     * {dualRewardToNativeRoute} - Route we take to get from {dualRewardToken} into {nativeToken}.
      * {nativeToWantRoute} - Route we take to get from {nativeToken} into {want}.
      */
     address[] public rewardToNativeRoute;
+    address[] public dualRewardToNativeRoute;
     address[] public nativeToWantRoute;
 
     /**
@@ -63,6 +68,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * {borrowDepth} - The maximum amount of loops used to leverage and deleverage
      * {minWantToLeverage} - The minimum amount of want to leverage in a loop
      * {withdrawSlippageTolerance} - Maximum slippage authorized when withdrawing
+     * {isDualRewardActive} - Maximum slippage authorized when withdrawing
      */
     uint256 public targetLTV;
     uint256 public allowedLTVDrift;
@@ -72,6 +78,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     uint256 public maxBorrowDepth;
     uint256 public minRewardToSell;
     uint256 public withdrawSlippageTolerance;
+    bool public isDualRewardActive;
 
     /**
      * @dev Initializes the strategy. Sets parameters, saves routes, and gives allowances.
@@ -100,6 +107,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         maxBorrowDepth = 15;
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
+        dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
+        isDualRewardActive = true;
 
         _giveAllowances();
 
@@ -153,7 +162,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      *      Profit is denominated in nativeToken, and takes fees into account.
      */
     function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
-        uint256 rewards = predictRewardAccrued();
+        uint256 rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(0, address(this));
         if (rewards == 0) {
             return (0, 0);
         }
@@ -251,6 +260,20 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     }
 
     /**
+     * @dev Configure variables for the dual reward
+     */
+    function configureDualReward(bool _isDualRewardActive, address _dualRewardToken, uint8 _dualRewardIndex, address[] calldata _newDualRewardToNativeRoute) external {
+        _onlyStrategistOrOwner();
+        require(_newDualRewardToNativeRoute[0] == _dualRewardToken, 'bad route');
+        require(_newDualRewardToNativeRoute[_newDualRewardToNativeRoute.length - 1] == nativeToken, 'bad route');
+        isDualRewardActive = _isDualRewardActive;
+        dualRewardToken = _dualRewardToken;
+        dualRewardIndex = _dualRewardIndex;
+        delete dualRewardToNativeRoute;
+        dualRewardToNativeRoute = _newDualRewardToNativeRoute;
+    }
+
+    /**
      * @dev Function to retire the strategy. Claims all rewards and withdraws
      *      all principal from external contracts, and sends everything back to
      *      the vault. Can only be called by strategist or owner.
@@ -337,46 +360,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         borrowed = borrowBalance;
 
         supplied = (cWantBalance * exchangeRate) / MANTISSA;
-    }
-
-    /**
-     * @dev This function makes a prediction on how much {rewardToken} is accrued.
-     *      It is not 100% accurate as it uses current balances in Compound to predict into the past.
-     */
-    function predictRewardAccrued() public view returns (uint256) {
-        // Has no previous harvest to calculate accrual
-        if (lastHarvestTimestamp == 0) {
-            return 0;
-        }
-
-        (uint256 supplied, uint256 borrowed) = getCurrentPosition();
-        if (supplied == 0) {
-            return 0; // should be impossible to have 0 balance and positive comp accrued
-        }
-
-        uint256 distributionPerBlock = comptroller.compSpeeds(address(cWant));
-        uint256 totalBorrow = cWant.totalBorrows();
-
-        // total supply needs to be exchanged to underlying using exchange rate
-        uint256 totalSupplyCtoken = cWant.totalSupply();
-        uint256 totalSupply = (totalSupplyCtoken * cWant.exchangeRateStored()) / MANTISSA;
-
-        uint256 blockShareSupply = 0;
-        if (totalSupply > 0) {
-            blockShareSupply = (supplied * distributionPerBlock) / totalSupply;
-        }
-
-        uint256 blockShareBorrow = 0;
-        if (totalBorrow > 0) {
-            blockShareBorrow = (borrowed * distributionPerBlock) / totalBorrow;
-        }
-
-        // How much we expect to earn per block
-        uint256 blockShare = blockShareSupply + blockShareBorrow;
-        uint256 secondsPerBlock = 1; // Average FTM block speed
-        uint256 blocksSinceLast = block.timestamp - lastHarvestTimestamp / secondsPerBlock;
-
-        return blocksSinceLast * blockShare;
     }
 
     /**

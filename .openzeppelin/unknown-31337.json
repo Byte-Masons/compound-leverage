@@ -3,14 +3,14 @@
   "proxies": [
     {
       "address": "0x05180215c45Dda1718AFfd8739058DE533455Ec8",
-      "txHash": "0xf4ae3147d148e4ad8cea58c6b82bd70b547fab6c2181c241e997b74fbde42f36",
+      "txHash": "0x9c89e388eeb5c2c53fd12392736dc240c1997d52b24d0d11d39c72383e6f32f0",
       "kind": "uups"
     }
   ],
   "impls": {
-    "4834fc548588ac74fd2c7b9cb07047bf967e95b88dbe4a07bf3050e89708c604": {
+    "b71ee0a4a0e4695f979f3c2a26d55e1c39408f995b5e549a208bd7f9905830ef": {
       "address": "0x3887f0555399FfB97EC62B7f8F99290d5007e769",
-      "txHash": "0xa6f55738b3f2d22e0d8143c057463e93aac9f69982fc182096327b56844f37ac",
+      "txHash": "0xc206fc8490c1cbba5107598898dc4b98a6c04c3015a685042bd1563ba044813d",
       "layout": {
         "storage": [
           {
@@ -88,7 +88,7 @@
           {
             "contract": "ReaperBaseStrategy",
             "label": "harvestLog",
-            "type": "t_array(t_struct(Harvest)7772_storage)dyn_storage",
+            "type": "t_array(t_struct(Harvest)7720_storage)dyn_storage",
             "src": "contracts\\abstract\\ReaperBaseStrategy.sol:29"
           },
           {
@@ -166,13 +166,13 @@
           {
             "contract": "ReaperStrategyCompoundLeverage",
             "label": "cWant",
-            "type": "t_contract(CErc20I)8507",
+            "type": "t_contract(CErc20I)8455",
             "src": "contracts\\ReaperStrategyCompoundLeverage.sol:30"
           },
           {
             "contract": "ReaperStrategyCompoundLeverage",
             "label": "comptroller",
-            "type": "t_contract(IComptroller)8853",
+            "type": "t_contract(IComptroller)8801",
             "src": "contracts\\ReaperStrategyCompoundLeverage.sol:38"
           },
           {
@@ -231,7 +231,7 @@
           },
           {
             "contract": "ReaperStrategyCompoundLeverage",
-            "label": "minScreamToSell",
+            "label": "minRewardToSell",
             "type": "t_uint256",
             "src": "contracts\\ReaperStrategyCompoundLeverage.sol:73"
           },
@@ -246,10 +246,10 @@
           "t_address": {
             "label": "address"
           },
-          "t_contract(CErc20I)8507": {
+          "t_contract(CErc20I)8455": {
             "label": "contract CErc20I"
           },
-          "t_contract(IComptroller)8853": {
+          "t_contract(IComptroller)8801": {
             "label": "contract IComptroller"
           },
           "t_array(t_address)dyn_storage": {
@@ -258,10 +258,10 @@
           "t_uint256": {
             "label": "uint256"
           },
-          "t_array(t_struct(Harvest)7772_storage)dyn_storage": {
+          "t_array(t_struct(Harvest)7720_storage)dyn_storage": {
             "label": "struct ReaperBaseStrategy.Harvest[]"
           },
-          "t_struct(Harvest)7772_storage": {
+          "t_struct(Harvest)7720_storage": {
             "label": "struct ReaperBaseStrategy.Harvest",
             "members": [
               {
