@@ -2,14 +2,14 @@
 
 pragma solidity 0.8.11;
 
-import "./interfaces/IStrategy.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import './interfaces/IStrategy.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol';
+import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import '@openzeppelin/contracts/utils/Address.sol';
+import '@openzeppelin/contracts/utils/math/SafeMath.sol';
 
 /**
  * @dev Implementation of a vault to deposit funds for yield optimizing.
@@ -101,11 +101,8 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      */
 
     function initialize(address _strategy) public onlyOwner returns (bool) {
-        require(!initialized, "Contract is already initialized.");
-        require(
-            block.timestamp <= (constructionTime + 1200),
-            "initialization period over, use timelock"
-        );
+        require(!initialized, 'Contract is already initialized.');
+        require(block.timestamp <= (constructionTime + 1200), 'initialization period over, use timelock');
         strategy = _strategy;
         initialized = true;
         return true;
@@ -117,10 +114,7 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      */
 
     function agreeToTerms() public returns (bool) {
-        require(
-            !hasReadAndAcceptedTerms[msg.sender],
-            "you have already accepted the terms"
-        );
+        require(!hasReadAndAcceptedTerms[msg.sender], 'you have already accepted the terms');
         hasReadAndAcceptedTerms[msg.sender] = true;
         emit TermsAccepted(msg.sender);
         return true;
@@ -132,8 +126,7 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      *  and the balance deployed in other contracts as part of the strategy.
      */
     function balance() public view returns (uint256) {
-        return
-            token.balanceOf(address(this)).add(IStrategy(strategy).balanceOf());
+        return token.balanceOf(address(this)).add(IStrategy(strategy).balanceOf());
     }
 
     /**
@@ -151,8 +144,7 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      * Returns an uint256 with 18 decimals of how much underlying asset one vault share represents.
      */
     function getPricePerFullShare() public view returns (uint256) {
-        return
-            totalSupply() == 0 ? 10**decimals() : balance().mul(10**decimals()).div(totalSupply());
+        return totalSupply() == 0 ? 10**decimals() : balance().mul(10**decimals()).div(totalSupply());
     }
 
     /**
@@ -171,17 +163,15 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      * it's set to true
      */
     function deposit(uint256 _amount) public nonReentrant {
-        require(_amount != 0, "please provide amount");
+        require(_amount != 0, 'please provide amount');
         uint256 _pool = balance();
-        require(_pool.add(_amount) <= tvlCap, "vault is full!");
+        require(_pool.add(_amount) <= tvlCap, 'vault is full!');
 
         uint256 _before = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), _amount);
         uint256 _after = token.balanceOf(address(this));
         _amount = _after.sub(_before);
-        uint256 _amountAfterDeposit = (
-            _amount.mul(PERCENT_DIVISOR.sub(depositFee))
-        ).div(PERCENT_DIVISOR);
+        uint256 _amountAfterDeposit = (_amount.mul(PERCENT_DIVISOR.sub(depositFee))).div(PERCENT_DIVISOR);
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = _amountAfterDeposit;
@@ -216,7 +206,7 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      * tokens are burned in the process.
      */
     function withdraw(uint256 _shares) public nonReentrant {
-        require(_shares > 0, "please provide amount");
+        require(_shares > 0, 'please provide amount');
         uint256 r = (balance().mul(_shares)).div(totalSupply());
         _burn(msg.sender, _shares);
 
@@ -279,7 +269,7 @@ contract ReaperVaultv1_3 is ERC20, Ownable, ReentrancyGuard {
      * @param _token address of the token to rescue.
      */
     function inCaseTokensGetStuck(address _token) external onlyOwner {
-        require(_token != address(token), "!token");
+        require(_token != address(token), '!token');
 
         uint256 amount = IERC20Metadata(_token).balanceOf(address(this));
         IERC20Metadata(_token).safeTransfer(msg.sender, amount);
