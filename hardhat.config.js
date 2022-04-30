@@ -9,8 +9,8 @@ const { devAccount } = require('./secrets.json');
 
 module.exports = {
   networks: {
-    opera: {
-      url: 'https://late-wild-fire.fantom.quiknode.pro/',
+    aurora: {
+      url: 'https://mainnet.aurora.dev/GGa5BKpfzNSefWg7AEdnAbDTfHH2VSMhc6r5D7EsE6Ha',
       accounts: [devAccount],
     },
   },

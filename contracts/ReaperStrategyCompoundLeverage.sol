@@ -649,7 +649,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         }
 
         IERC20Upgradeable(_path[0]).safeIncreaseAllowance(UNI_ROUTER, _amount);
-        IUniswapV2Router02(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
             _amount,
             0,
             _path,
