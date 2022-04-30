@@ -376,7 +376,7 @@ abstract contract ReaperBaseStrategyv2 is
      * to perform all the functions of any lower privileged role. This is accomplished using the
      * {cascadingAccess} array that lists all roles from most privileged to least privileged.
      */
-    function _atLeastRole(bytes32 role) internal {
+    function _atLeastRole(bytes32 role) internal view {
         uint256 numRoles = cascadingAccess.length;
         uint256 specifiedRoleIndex;
         for (uint256 i = 0; i < numRoles; i++) {

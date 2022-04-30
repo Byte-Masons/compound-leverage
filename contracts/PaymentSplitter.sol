@@ -1,6 +1,6 @@
 /**
  *Submitted for verification at FtmScan.com on 2022-02-03
-*/
+ */
 
 // Sources flattened with hardhat v2.7.0 https://hardhat.org
 
@@ -89,9 +89,7 @@ interface IERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
-
 // File ozlatest/utils/Address.sol@v4.4.1
-
 
 // OpenZeppelin Contracts v4.4.1 (utils/Address.sol)
 
@@ -147,10 +145,10 @@ library Address {
      * https://solidity.readthedocs.io/en/v0.5.11/security-considerations.html#use-the-checks-effects-interactions-pattern[checks-effects-interactions pattern].
      */
     function sendValue(address payable recipient, uint256 amount) internal {
-        require(address(this).balance >= amount, "Address: insufficient balance");
+        require(address(this).balance >= amount, 'Address: insufficient balance');
 
-        (bool success, ) = recipient.call{value: amount}("");
-        require(success, "Address: unable to send value, recipient may have reverted");
+        (bool success, ) = recipient.call{ value: amount }('');
+        require(success, 'Address: unable to send value, recipient may have reverted');
     }
 
     /**
@@ -172,7 +170,7 @@ library Address {
      * _Available since v3.1._
      */
     function functionCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionCall(target, data, "Address: low-level call failed");
+        return functionCall(target, data, 'Address: low-level call failed');
     }
 
     /**
@@ -205,7 +203,7 @@ library Address {
         bytes memory data,
         uint256 value
     ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, value, "Address: low-level call with value failed");
+        return functionCallWithValue(target, data, value, 'Address: low-level call with value failed');
     }
 
     /**
@@ -220,10 +218,10 @@ library Address {
         uint256 value,
         string memory errorMessage
     ) internal returns (bytes memory) {
-        require(address(this).balance >= value, "Address: insufficient balance for call");
-        require(isContract(target), "Address: call to non-contract");
+        require(address(this).balance >= value, 'Address: insufficient balance for call');
+        require(isContract(target), 'Address: call to non-contract');
 
-        (bool success, bytes memory returndata) = target.call{value: value}(data);
+        (bool success, bytes memory returndata) = target.call{ value: value }(data);
         return verifyCallResult(success, returndata, errorMessage);
     }
 
@@ -234,7 +232,7 @@ library Address {
      * _Available since v3.3._
      */
     function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
-        return functionStaticCall(target, data, "Address: low-level static call failed");
+        return functionStaticCall(target, data, 'Address: low-level static call failed');
     }
 
     /**
@@ -248,7 +246,7 @@ library Address {
         bytes memory data,
         string memory errorMessage
     ) internal view returns (bytes memory) {
-        require(isContract(target), "Address: static call to non-contract");
+        require(isContract(target), 'Address: static call to non-contract');
 
         (bool success, bytes memory returndata) = target.staticcall(data);
         return verifyCallResult(success, returndata, errorMessage);
@@ -261,7 +259,7 @@ library Address {
      * _Available since v3.4._
      */
     function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionDelegateCall(target, data, "Address: low-level delegate call failed");
+        return functionDelegateCall(target, data, 'Address: low-level delegate call failed');
     }
 
     /**
@@ -275,7 +273,7 @@ library Address {
         bytes memory data,
         string memory errorMessage
     ) internal returns (bytes memory) {
-        require(isContract(target), "Address: delegate call to non-contract");
+        require(isContract(target), 'Address: delegate call to non-contract');
 
         (bool success, bytes memory returndata) = target.delegatecall(data);
         return verifyCallResult(success, returndata, errorMessage);
@@ -310,14 +308,11 @@ library Address {
     }
 }
 
-
 // File ozlatest/token/ERC20/utils/SafeERC20.sol@v4.4.1
-
 
 // OpenZeppelin Contracts v4.4.1 (token/ERC20/utils/SafeERC20.sol)
 
 pragma solidity ^0.8.0;
-
 
 /**
  * @title SafeERC20
@@ -365,7 +360,7 @@ library SafeERC20 {
         // 'safeIncreaseAllowance' and 'safeDecreaseAllowance'
         require(
             (value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeERC20: approve from non-zero to non-zero allowance"
+            'SafeERC20: approve from non-zero to non-zero allowance'
         );
         _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
     }
@@ -386,7 +381,7 @@ library SafeERC20 {
     ) internal {
         unchecked {
             uint256 oldAllowance = token.allowance(address(this), spender);
-            require(oldAllowance >= value, "SafeERC20: decreased allowance below zero");
+            require(oldAllowance >= value, 'SafeERC20: decreased allowance below zero');
             uint256 newAllowance = oldAllowance - value;
             _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
         }
@@ -403,17 +398,15 @@ library SafeERC20 {
         // we're implementing it ourselves. We use {Address.functionCall} to perform this call, which verifies that
         // the target address contains contract code and also asserts for success in the low-level call.
 
-        bytes memory returndata = address(token).functionCall(data, "SafeERC20: low-level call failed");
+        bytes memory returndata = address(token).functionCall(data, 'SafeERC20: low-level call failed');
         if (returndata.length > 0) {
             // Return data is optional
-            require(abi.decode(returndata, (bool)), "SafeERC20: ERC20 operation did not succeed");
+            require(abi.decode(returndata, (bool)), 'SafeERC20: ERC20 operation did not succeed');
         }
     }
 }
 
-
 // File ozlatest/utils/Context.sol@v4.4.1
-
 
 // OpenZeppelin Contracts v4.4.1 (utils/Context.sol)
 
@@ -439,13 +432,12 @@ abstract contract Context {
     }
 }
 
-
 // File contracts/PaymentSplitter.sol
-
 
 // OpenZeppelin Contracts v4.4.1 (finance/PaymentSplitter.sol)
 
 pragma solidity ^0.8.0;
+
 /**
  * @title PaymentSplitter
  * @dev This contract allows to split Ether payments among a group of accounts. The sender does not need to be aware
