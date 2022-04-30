@@ -1,0 +1,343 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [
+    {
+      "address": "0x05180215c45Dda1718AFfd8739058DE533455Ec8",
+      "txHash": "0xf4ae3147d148e4ad8cea58c6b82bd70b547fab6c2181c241e997b74fbde42f36",
+      "kind": "uups"
+    }
+  ],
+  "impls": {
+    "4834fc548588ac74fd2c7b9cb07047bf967e95b88dbe4a07bf3050e89708c604": {
+      "address": "0x3887f0555399FfB97EC62B7f8F99290d5007e769",
+      "txHash": "0xa6f55738b3f2d22e0d8143c057463e93aac9f69982fc182096327b56844f37ac",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:39"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:44"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\ERC1967\\ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\UUPSUpgradeable.sol:107"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "contract": "ERC165Upgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\introspection\\ERC165Upgradeable.sol:41"
+          },
+          {
+            "contract": "AccessControlUpgradeable",
+            "label": "_roles",
+            "type": "t_mapping(t_bytes32,t_struct(RoleData)179_storage)",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\AccessControlUpgradeable.sol:61"
+          },
+          {
+            "contract": "AccessControlUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\AccessControlUpgradeable.sol:235"
+          },
+          {
+            "contract": "AccessControlEnumerableUpgradeable",
+            "label": "_roleMembers",
+            "type": "t_mapping(t_bytes32,t_struct(AddressSet)2499_storage)",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\AccessControlEnumerableUpgradeable.sol:22"
+          },
+          {
+            "contract": "AccessControlEnumerableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\AccessControlEnumerableUpgradeable.sol:76"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "_paused",
+            "type": "t_bool",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\PausableUpgradeable.sol:29"
+          },
+          {
+            "contract": "PausableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\PausableUpgradeable.sol:102"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "harvestLog",
+            "type": "t_array(t_struct(Harvest)7772_storage)dyn_storage",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:29"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "harvestLogCadence",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:30"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "lastHarvestTimestamp",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:31"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "treasury",
+            "type": "t_address",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:46"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "vault",
+            "type": "t_address",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:47"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "strategistRemitter",
+            "type": "t_address",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:48"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "totalFee",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:71"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "callFee",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:72"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "treasuryFee",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:73"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "strategistFee",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:74"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "securityFee",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:75"
+          },
+          {
+            "contract": "ReaperBaseStrategy",
+            "label": "upgradeProposalTime",
+            "type": "t_uint256",
+            "src": "contracts\\abstract\\ReaperBaseStrategy.sol:88"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "want",
+            "type": "t_address",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:29"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "cWant",
+            "type": "t_contract(CErc20I)8507",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:30"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "comptroller",
+            "type": "t_contract(IComptroller)8853",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:38"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "rewardToNativeRoute",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:45"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "nativeToWantRoute",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:46"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "markets",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:54"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "targetLTV",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:67"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "allowedLTVDrift",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:68"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "balanceOfPool",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:69"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "borrowDepth",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:70"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "minWantToLeverage",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:71"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "maxBorrowDepth",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:72"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "minScreamToSell",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:73"
+          },
+          {
+            "contract": "ReaperStrategyCompoundLeverage",
+            "label": "withdrawSlippageTolerance",
+            "type": "t_uint256",
+            "src": "contracts\\ReaperStrategyCompoundLeverage.sol:74"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_contract(CErc20I)8507": {
+            "label": "contract CErc20I"
+          },
+          "t_contract(IComptroller)8853": {
+            "label": "contract IComptroller"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_struct(Harvest)7772_storage)dyn_storage": {
+            "label": "struct ReaperBaseStrategy.Harvest[]"
+          },
+          "t_struct(Harvest)7772_storage": {
+            "label": "struct ReaperBaseStrategy.Harvest",
+            "members": [
+              {
+                "label": "timestamp",
+                "type": "t_uint256"
+              },
+              {
+                "label": "vaultSharePrice",
+                "type": "t_uint256"
+              }
+            ]
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_mapping(t_bytes32,t_struct(AddressSet)2499_storage)": {
+            "label": "mapping(bytes32 => struct EnumerableSetUpgradeable.AddressSet)"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_struct(AddressSet)2499_storage": {
+            "label": "struct EnumerableSetUpgradeable.AddressSet",
+            "members": [
+              {
+                "label": "_inner",
+                "type": "t_struct(Set)2198_storage"
+              }
+            ]
+          },
+          "t_struct(Set)2198_storage": {
+            "label": "struct EnumerableSetUpgradeable.Set",
+            "members": [
+              {
+                "label": "_values",
+                "type": "t_array(t_bytes32)dyn_storage"
+              },
+              {
+                "label": "_indexes",
+                "type": "t_mapping(t_bytes32,t_uint256)"
+              }
+            ]
+          },
+          "t_array(t_bytes32)dyn_storage": {
+            "label": "bytes32[]"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)179_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)"
+          },
+          "t_struct(RoleData)179_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "members",
+                "type": "t_mapping(t_address,t_bool)"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32"
+              }
+            ]
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    }
+  }
+}

@@ -26,14 +26,8 @@ describe('Vaults', function () {
   const paymentSplitterAddress = '0x63cbd4134c2253041F370472c130e92daE4Ff174';
   let treasury;
   let want;
-  // const scFUSD = "0x83fad9Bce24B605Fe149b433D62C8011070239B8";
-  // const FUSD = "0xad84341756bf337f5a0164515b1f6f993d194e1f";
-  // const daiAddress = "0x8d11ec38a3eb5e956b052f67da8bdc9bef8abf3e";
-  // const scDaiAddress = "0x8D9AED9882b4953a0c9fa920168fa1FDfA0eBE75";
-  const usdcAddress = '0x04068da6c83afcfa0e13ba15a6696662335d5b75';
-  const scUSDCAddress = '0xE45Ac34E528907d0A0239ab5Db507688070B20bf';
-  const wantAddress = usdcAddress;
-  const scWantAddress = scUSDCAddress;
+  const wantAddress = '0xb12bfca5a55806aaf64e99521918a4bf0fc40802';
+  const scWantAddress = '0xe5308dc623101508952948b141fd9eabd3337d99';
   let self;
   let wantWhale;
   let selfAddress;
@@ -47,8 +41,8 @@ describe('Vaults', function () {
       params: [
         {
           forking: {
-            jsonRpcUrl: 'https://rpc.ftm.tools/',
-            blockNumber: 34485212,
+            jsonRpcUrl: 'https://mainnet.aurora.dev/GGa5BKpfzNSefWg7AEdnAbDTfHH2VSMhc6r5D7EsE6Ha',
+            blockNumber: 64604601,
           },
         },
       ],
@@ -56,12 +50,8 @@ describe('Vaults', function () {
     console.log('providers');
     //get signers
     [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
-    // const wantHolder = "0xc4867e5d3f25b47a3be0a15bd70c69d7b93b169e"; // dai
-    // const wantWhaleAddress = "0x93c08a3168fc469f3fc165cd3a471d19a37ca19e"; // dai
-    // const wantHolder = "0x3b7994f623a02617cf1053161d14dc881e1aa02c"; // fusd
-    // const wantWhaleAddress = "0x8d7e07b1a346ac29e922ac01fa34cb2029f536b9"; // fusd
-    const wantHolder = '0xadbeb26c852bb3c41a59078a38ec562b155bb364'; // usdc
-    const wantWhaleAddress = '0xb31D334eec186D29C196dA7cF7069486CEB0D122'; // usdc
+    const wantHolder = '0xab57baBf2cE17f8a7661Cbc24fc515CeA77f930B';
+    const wantWhaleAddress = '0x1d50a8c3295798fcebddd0c720bec4fbedc3d178';
     const strategistAddress = '0x3b410908e71Ee04e7dE2a87f8F9003AFe6c1c7cE';
     await hre.network.provider.request({
       method: 'hardhat_impersonateAccount',
@@ -83,7 +73,7 @@ describe('Vaults', function () {
     console.log('addresses');
 
     //get artifacts
-    Strategy = await ethers.getContractFactory('ReaperAutoCompoundCompoundLeverage');
+    Strategy = await ethers.getContractFactory('ReaperStrategyCompoundLeverage');
     Vault = await ethers.getContractFactory('ReaperVaultv1_3');
     Treasury = await ethers.getContractFactory('ReaperTreasury');
     Want = await ethers.getContractFactory('@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20');
@@ -122,13 +112,7 @@ describe('Vaults', function () {
 
     //approving LP token and vault share spend
     await want.approve(vault.address, ethers.utils.parseEther('1000000000'));
-    console.log('approvals1');
-    await want.connect(self).approve(vault.address, ethers.utils.parseEther('1000000000'));
-    console.log('approvals2');
-    console.log('approvals3');
     await want.connect(wantWhale).approve(vault.address, ethers.utils.parseEther('1000000000'));
-    console.log('approvals4');
-    await vault.connect(wantWhale).approve(vault.address, ethers.utils.parseEther('1000000000'));
   });
 
   describe('Deploying the vault and strategy', function () {
@@ -147,7 +131,7 @@ describe('Vaults', function () {
       expect(pricePerFullShare).to.equal(ethers.utils.parseEther('1'));
     });
   });
-  describe('Vault Tests', function () {
+  xdescribe('Vault Tests', function () {
     it('should allow deposits and account for them correctly', async function () {
       const userBalance = await want.balanceOf(selfAddress);
       console.log(`userBalance: ${userBalance}`);
@@ -430,7 +414,7 @@ describe('Vaults', function () {
       console.log(`Average APR across ${numHarvests} harvests is ${averageAPR} basis points.`);
     });
   });
-  describe('Strategy', function () {
+  xdescribe('Strategy', function () {
     it('should be able to pause and unpause', async function () {
       await strategy.pause();
       const depositAmount = toWantUnit('.05', true);

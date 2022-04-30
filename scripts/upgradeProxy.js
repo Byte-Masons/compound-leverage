@@ -3,13 +3,13 @@ const options = { gasPrice: 1000000000000 };
 const targetLTV = ethers.utils.parseEther('0.72');
 
 const getStrategy = async () => {
-  const Strategy = await ethers.getContractFactory('ReaperAutoCompoundCompoundLeverage');
+  const Strategy = await ethers.getContractFactory('ReaperStrategyCompoundLeverage');
   const strategy = Strategy.attach(tusdProxy);
   return strategy;
 };
 
 const upgradeProxy = async () => {
-  const stratFactory = await ethers.getContractFactory('ReaperAutoCompoundCompoundLeverage');
+  const stratFactory = await ethers.getContractFactory('ReaperStrategyCompoundLeverage');
   await hre.upgrades.upgradeProxy(tusdProxy, stratFactory, { ...options, timeout: 0 });
   console.log('upgradeProxy');
 };

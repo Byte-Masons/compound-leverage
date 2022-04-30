@@ -4,9 +4,12 @@ import './abstract/ReaperBaseStrategy.sol';
 import './interfaces/IUniswapRouter.sol';
 import './interfaces/CErc20I.sol';
 import './interfaces/IComptroller.sol';
+import './interfaces/IRewardDistributor.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
 
 pragma solidity 0.8.11;
+
+import "hardhat/console.sol";
 
 /**
  * @dev This strategy will deposit and leverage a token on Compound to maximize yield by farming reward tokens
@@ -21,8 +24,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * {want} - The vault token the strategy is maximizing
      * {cWant} - The Compound version of the want token
      */
-    address public constant nativeToken = 0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83;
-    address public constant rewardToken = 0xe0654C8e6fd4D733349ac7E09f6f23DA256bF475;
+    address public constant nativeToken = address(0xC9BdeEd33CD01541e1eeD10f90519d2C06Fe3feB);
+    address public constant rewardToken = address(0x9f1F933C660a1DC856F0E0Fe058435879c5CCEf0);
     address public want;
     CErc20I public cWant;
 
@@ -31,16 +34,16 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * {UNI_ROUTER} - the UNI_ROUTER for target DEX
      * {comptroller} - Compound contract to enter market and to claim Compound tokens
      */
-    address public constant UNI_ROUTER = 0xF491e7B69E4244ad4002BC14e878a34207E38c29;
+    address public constant UNI_ROUTER = address(0x2CB45Edb4517d5947aFdE3BEAbF95A582506858B);
     IComptroller public comptroller;
 
     /**
      * @dev Routes we take to swap tokens
-     * {screamToWftmRoute} - Route we take to get from {rewardToken} into {nativeToken}.
-     * {wftmToWantRoute} - Route we take to get from {nativeToken} into {want}.
+     * {rewardToNativeRoute} - Route we take to get from {rewardToken} into {nativeToken}.
+     * {nativeToWantRoute} - Route we take to get from {nativeToken} into {want}.
      */
-    address[] public screamToWftmRoute;
-    address[] public wftmToWantRoute;
+    address[] public rewardToNativeRoute;
+    address[] public nativeToWantRoute;
 
     /**
      * @dev Compound variables
@@ -81,12 +84,13 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         address _scWant
     ) public initializer {
         __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists);
+        console.log("initialize");
         cWant = CErc20I(_scWant);
         markets = [_scWant];
         comptroller = IComptroller(cWant.comptroller());
         want = cWant.underlying();
-        wftmToWantRoute = [nativeToken, want];
-        screamToWftmRoute = [rewardToken, nativeToken];
+        nativeToWantRoute = [nativeToken, want];
+        rewardToNativeRoute = [rewardToken, nativeToken];
 
         targetLTV = 0.72 ether;
         allowedLTVDrift = 0.01 ether;
@@ -153,7 +157,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         if (rewards == 0) {
             return (0, 0);
         }
-        profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, screamToWftmRoute)[1];
+        profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
         uint256 wftmFee = (profit * totalFee) / PERCENT_DIVISOR;
         callFeeToUser = (wftmFee * callFee) / PERCENT_DIVISOR;
         profit -= wftmFee;
@@ -242,8 +246,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         _onlyStrategistOrOwner();
         require(_newWftmToWantRoute[0] == nativeToken, 'bad route');
         require(_newWftmToWantRoute[_newWftmToWantRoute.length - 1] == want, 'bad route');
-        delete wftmToWantRoute;
-        wftmToWantRoute = _newWftmToWantRoute;
+        delete nativeToWantRoute;
+        nativeToWantRoute = _newWftmToWantRoute;
     }
 
     /**
@@ -662,7 +666,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
             IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 screamBalance,
                 0,
-                screamToWftmRoute,
+                rewardToNativeRoute,
                 address(this),
                 block.timestamp + 600
             );
@@ -701,7 +705,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
             IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 wftmBalance,
                 0,
-                wftmToWantRoute,
+                nativeToWantRoute,
                 address(this),
                 block.timestamp + 600
             );
