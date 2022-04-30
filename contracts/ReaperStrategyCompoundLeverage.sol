@@ -70,7 +70,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     uint256 public borrowDepth;
     uint256 public minWantToLeverage;
     uint256 public maxBorrowDepth;
-    uint256 public minScreamToSell;
+    uint256 public minRewardToSell;
     uint256 public withdrawSlippageTolerance;
 
     /**
@@ -98,7 +98,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         borrowDepth = 12;
         minWantToLeverage = 1000;
         maxBorrowDepth = 15;
-        minScreamToSell = 1000;
+        minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
 
         _giveAllowances();
@@ -153,14 +153,14 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      *      Profit is denominated in nativeToken, and takes fees into account.
      */
     function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
-        uint256 rewards = predictScreamAccrued();
+        uint256 rewards = predictRewardAccrued();
         if (rewards == 0) {
             return (0, 0);
         }
         profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
-        uint256 wftmFee = (profit * totalFee) / PERCENT_DIVISOR;
-        callFeeToUser = (wftmFee * callFee) / PERCENT_DIVISOR;
-        profit -= wftmFee;
+        uint256 nativeFee = (profit * totalFee) / PERCENT_DIVISOR;
+        callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
+        profit -= nativeFee;
     }
 
     /**
@@ -220,7 +220,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      */
     function setMinScreamToSell(uint256 _minScreamToSell) external {
         _onlyStrategistOrOwner();
-        minScreamToSell = _minScreamToSell;
+        minRewardToSell = _minScreamToSell;
     }
 
     /**
@@ -242,12 +242,12 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Sets the swap path to go from {nativeToken} to {want}.
      */
-    function setWftmToWantRoute(address[] calldata _newWftmToWantRoute) external {
+    function setNativeToWantRoute(address[] calldata _newNativeToWantRoute) external {
         _onlyStrategistOrOwner();
-        require(_newWftmToWantRoute[0] == nativeToken, 'bad route');
-        require(_newWftmToWantRoute[_newWftmToWantRoute.length - 1] == want, 'bad route');
+        require(_newNativeToWantRoute[0] == nativeToken, 'bad route');
+        require(_newNativeToWantRoute[_newNativeToWantRoute.length - 1] == want, 'bad route');
         delete nativeToWantRoute;
-        nativeToWantRoute = _newWftmToWantRoute;
+        nativeToWantRoute = _newNativeToWantRoute;
     }
 
     /**
@@ -260,7 +260,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     function retireStrat() external doUpdateBalance {
         _onlyStrategistOrOwner();
         _claimRewards();
-        _swapRewardsToWftm();
+        _swapRewardsToNative();
         _swapToWant();
 
         _deleverage(type(uint256).max);
@@ -343,7 +343,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev This function makes a prediction on how much {rewardToken} is accrued.
      *      It is not 100% accurate as it uses current balances in Compound to predict into the past.
      */
-    function predictScreamAccrued() public view returns (uint256) {
+    function predictRewardAccrued() public view returns (uint256) {
         // Has no previous harvest to calculate accrual
         if (lastHarvestTimestamp == 0) {
             return 0;
@@ -639,7 +639,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      */
     function _harvestCore() internal override {
         _claimRewards();
-        _swapRewardsToWftm();
+        _swapRewardsToNative();
         _chargeFees();
         _swapToWant();
         deposit();
@@ -660,9 +660,9 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Core harvest function.
      * Swaps {rewardToken} to {nativeToken}
      */
-    function _swapRewardsToWftm() internal {
+    function _swapRewardsToNative() internal {
         uint256 screamBalance = IERC20Upgradeable(rewardToken).balanceOf(address(this));
-        if (screamBalance >= minScreamToSell) {
+        if (screamBalance >= minRewardToSell) {
             IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
                 screamBalance,
                 0,
@@ -678,10 +678,10 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * Charges fees based on the amount of nativeToken gained from reward
      */
     function _chargeFees() internal {
-        uint256 wftmFee = (IERC20Upgradeable(nativeToken).balanceOf(address(this)) * totalFee) / PERCENT_DIVISOR;
-        if (wftmFee != 0) {
-            uint256 callFeeToUser = (wftmFee * callFee) / PERCENT_DIVISOR;
-            uint256 treasuryFeeToVault = (wftmFee * treasuryFee) / PERCENT_DIVISOR;
+        uint256 nativeFee = (IERC20Upgradeable(nativeToken).balanceOf(address(this)) * totalFee) / PERCENT_DIVISOR;
+        if (nativeFee != 0) {
+            uint256 callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
+            uint256 treasuryFeeToVault = (nativeFee * treasuryFee) / PERCENT_DIVISOR;
             uint256 feeToStrategist = (treasuryFeeToVault * strategistFee) / PERCENT_DIVISOR;
             treasuryFeeToVault -= feeToStrategist;
 
@@ -700,10 +700,10 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
             return;
         }
 
-        uint256 wftmBalance = IERC20Upgradeable(nativeToken).balanceOf(address(this));
-        if (wftmBalance != 0) {
+        uint256 nativeBalance = IERC20Upgradeable(nativeToken).balanceOf(address(this));
+        if (nativeBalance != 0) {
             IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                wftmBalance,
+                nativeBalance,
                 0,
                 nativeToWantRoute,
                 address(this),
