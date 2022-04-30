@@ -9,6 +9,9 @@ async function main() {
   const strategist1 = '0x1E71AEE6081f62053123140aacC7a06021D77348';
   const strategist2 = '0x81876677843D00a7D792E1617459aC2E93202576';
   const strategist3 = '0x1A20D7A31e5B3Bc5f02c8A146EF6f394502a10c4';
+  const superAdmin = '0x04C710a1E8a738CDf7cAD3a52Ba77A784C35d8CE';
+  const admin = '0x539eF36C804e4D735d8cAb69e8e441c12d4B88E0';
+  const guardian = '0xf20E25f2AB644C8ecBFc992a6829478a85A98F2c';
   //const scUSDC = "0xE45Ac34E528907d0A0239ab5Db507688070B20bf";
   const scfUSDT = '0x02224765bc8d54c21bb51b0951c80315e1c263f9';
 
@@ -16,7 +19,13 @@ async function main() {
 
   const strategy = await hre.upgrades.deployProxy(
     Strategy,
-    [vaultAddress, [treasuryAddress, paymentSplitterAddress], [strategist1, strategist2, strategist3], scfUSDT],
+    [
+      vaultAddress,
+      [treasuryAddress, paymentSplitterAddress],
+      [strategist1, strategist2, strategist3],
+      [superAdmin, admin, guardian],
+      scfUSDT,
+    ],
     { kind: 'uups' },
   );
   await strategy.deployed();

@@ -97,9 +97,18 @@ describe('Vaults', function () {
     console.log(`treasury.address: ${treasury.address}`);
 
     console.log('strategy');
+    const superAdminAddress = '0x04C710a1E8a738CDf7cAD3a52Ba77A784C35d8CE';
+    const adminAddress = '0x539eF36C804e4D735d8cAb69e8e441c12d4B88E0';
+    const guardianAddress = '0xf20E25f2AB644C8ecBFc992a6829478a85A98F2c';
     strategy = await hre.upgrades.deployProxy(
       Strategy,
-      [vault.address, [treasury.address, paymentSplitterAddress], [strategistAddress], scWantAddress],
+      [
+        vault.address,
+        [treasury.address, paymentSplitterAddress],
+        [strategistAddress],
+        [superAdminAddress, adminAddress, guardianAddress],
+        scWantAddress,
+      ],
       { kind: 'uups' },
     );
     await strategy.deployed();
