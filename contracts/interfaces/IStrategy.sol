@@ -16,7 +16,7 @@ interface IStrategy {
     function harvest() external;
 
     //withdraws all tokens and sends them back to the vault
-    function retireStrat() external;
+    // function retireStrat() external;
 
     //pauses deposits, resets allowances, and withdraws all funds from farm
     function panic() external;

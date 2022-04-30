@@ -53,6 +53,9 @@ describe('Vaults', function () {
     const wantHolder = '0xab57baBf2cE17f8a7661Cbc24fc515CeA77f930B';
     const wantWhaleAddress = '0x1d50a8c3295798fcebddd0c720bec4fbedc3d178';
     const strategistAddress = '0x3b410908e71Ee04e7dE2a87f8F9003AFe6c1c7cE';
+    const superAdmin = '0x04C710a1E8a738CDf7cAD3a52Ba77A784C35d8CE';
+    const admin = '0x539eF36C804e4D735d8cAb69e8e441c12d4B88E0';
+    const guardian = '0xf20E25f2AB644C8ecBFc992a6829478a85A98F2c';
     await hre.network.provider.request({
       method: 'hardhat_impersonateAccount',
       params: [wantHolder],
@@ -99,7 +102,13 @@ describe('Vaults', function () {
     console.log('strategy');
     strategy = await hre.upgrades.deployProxy(
       Strategy,
-      [vault.address, [treasury.address, paymentSplitterAddress], [strategistAddress], scWantAddress],
+      [
+        vault.address,
+        [treasury.address, paymentSplitterAddress],
+        [strategistAddress],
+        [superAdmin, admin, guardian],
+        scWantAddress,
+      ],
       { kind: 'uups' },
     );
     await strategy.deployed();
@@ -120,7 +129,7 @@ describe('Vaults', function () {
   });
 
   describe('Deploying the vault and strategy', function () {
-    xit('should initiate vault with a 0 balance', async function () {
+    it('should initiate vault with a 0 balance', async function () {
       console.log(1);
       const totalBalance = await vault.balance();
       console.log(2);
@@ -136,7 +145,7 @@ describe('Vaults', function () {
     });
   });
   describe('Vault Tests', function () {
-    it('should allow deposits and account for them correctly', async function () {
+    xit('should allow deposits and account for them correctly', async function () {
       const userBalance = await want.balanceOf(selfAddress);
       console.log(`userBalance: ${userBalance}`);
       const vaultBalance = await vault.balance();

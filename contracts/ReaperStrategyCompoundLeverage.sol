@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import './abstract/ReaperBaseStrategy.sol';
+import './abstract/ReaperBaseStrategyv2.sol';
 import './interfaces/IUniswapRouter.sol';
 import './interfaces/CErc20I.sol';
 import './interfaces/IComptroller.sol';
@@ -9,12 +9,10 @@ import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 pragma solidity 0.8.11;
 
-import "hardhat/console.sol";
-
 /**
  * @dev This strategy will deposit and leverage a token on Compound to maximize yield by farming reward tokens
  */
-contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
+contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     /**
@@ -81,10 +79,10 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         address _vault,
         address[] memory _feeRemitters,
         address[] memory _strategists,
+        address[] memory _multisigRoles,
         address _scWant
     ) public initializer {
-        __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists);
-        console.log("initialize");
+        __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists, _multisigRoles);
         cWant = CErc20I(_scWant);
         markets = [_scWant];
         comptroller = IComptroller(cWant.comptroller());
@@ -101,7 +99,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         minScreamToSell = 1000;
         withdrawSlippageTolerance = 50;
 
-        _giveAllowances();
+        // _giveAllowances();
 
         comptroller.enterMarkets(markets);
     }
@@ -111,7 +109,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * It withdraws {want} from Compound
      * The available {want} minus fees is returned to the vault.
      */
-    function withdraw(uint256 _withdrawAmount) external doUpdateBalance {
+    function _withdraw(uint256 _withdrawAmount) internal override doUpdateBalance {
         require(msg.sender == vault);
 
         uint256 _ltv = _calculateLTVAfterWithdraw(_withdrawAmount);
@@ -152,8 +150,9 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Returns the approx amount of profit from harvesting.
      *      Profit is denominated in nativeToken, and takes fees into account.
      */
-    function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
-        uint256 rewards = predictScreamAccrued();
+    function estimateHarvest() external view returns (uint256 profit, uint256 callFeeToUser) {
+        //uint256 rewards = predictScreamAccrued();
+        uint256 rewards = 0;
         if (rewards == 0) {
             return (0, 0);
         }
@@ -166,8 +165,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Emergency function to deleverage in case regular deleveraging breaks
      */
-    function manualDeleverage(uint256 amount) external doUpdateBalance {
-        _onlyStrategistOrOwner();
+    function manualDeleverage(uint256 amount) external doUpdateBalance atLeastRole(STRATEGIST) {
         require(cWant.redeemUnderlying(amount) == 0);
         require(cWant.repayBorrow(amount) == 0);
     }
@@ -175,8 +173,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Emergency function to deleverage in case regular deleveraging breaks
      */
-    function manualReleaseWant(uint256 amount) external doUpdateBalance {
-        _onlyStrategistOrOwner();
+    function manualReleaseWant(uint256 amount) external doUpdateBalance atLeastRole(STRATEGIST) {
         require(cWant.redeemUnderlying(amount) == 0);
     }
 
@@ -184,10 +181,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets a new LTV for leveraging.
      * Should be in units of 1e18
      */
-    function setTargetLtv(uint256 _ltv) external {
-        if (!hasRole(KEEPER, msg.sender)) {
-            _onlyStrategistOrOwner();
-        }
+    function setTargetLtv(uint256 _ltv) external atLeastRole(KEEPER) {
 
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
         require(collateralFactorMantissa > _ltv + allowedLTVDrift);
@@ -199,8 +193,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev Sets a new allowed LTV drift
      * Should be in units of 1e18
      */
-    function setAllowedLtvDrift(uint256 _drift) external {
-        _onlyStrategistOrOwner();
+    function setAllowedLtvDrift(uint256 _drift) external atLeastRole(STRATEGIST) {
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
         require(collateralFactorMantissa > targetLTV + _drift);
         allowedLTVDrift = _drift;
@@ -209,8 +202,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Sets a new borrow depth (how many loops for leveraging+deleveraging)
      */
-    function setBorrowDepth(uint8 _borrowDepth) external {
-        _onlyStrategistOrOwner();
+    function setBorrowDepth(uint8 _borrowDepth) external atLeastRole(STRATEGIST) {
         require(_borrowDepth <= maxBorrowDepth);
         borrowDepth = _borrowDepth;
     }
@@ -218,32 +210,28 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Sets the minimum reward the will be sold (too little causes revert from Uniswap)
      */
-    function setMinScreamToSell(uint256 _minScreamToSell) external {
-        _onlyStrategistOrOwner();
+    function setMinScreamToSell(uint256 _minScreamToSell) external atLeastRole(STRATEGIST) {
         minScreamToSell = _minScreamToSell;
     }
 
     /**
      * @dev Sets the minimum want to leverage/deleverage (loop) for
      */
-    function setMinWantToLeverage(uint256 _minWantToLeverage) external {
-        _onlyStrategistOrOwner();
+    function setMinWantToLeverage(uint256 _minWantToLeverage) external atLeastRole(STRATEGIST) {
         minWantToLeverage = _minWantToLeverage;
     }
 
     /**
      * @dev Sets the maximum slippage authorized when withdrawing
      */
-    function setWithdrawSlippageTolerance(uint256 _withdrawSlippageTolerance) external {
-        _onlyStrategistOrOwner();
+    function setWithdrawSlippageTolerance(uint256 _withdrawSlippageTolerance) external atLeastRole(STRATEGIST) {
         withdrawSlippageTolerance = _withdrawSlippageTolerance;
     }
 
     /**
      * @dev Sets the swap path to go from {nativeToken} to {want}.
      */
-    function setWftmToWantRoute(address[] calldata _newWftmToWantRoute) external {
-        _onlyStrategistOrOwner();
+    function setWftmToWantRoute(address[] calldata _newWftmToWantRoute) external atLeastRole(STRATEGIST) {
         require(_newWftmToWantRoute[0] == nativeToken, 'bad route');
         require(_newWftmToWantRoute[_newWftmToWantRoute.length - 1] == want, 'bad route');
         delete nativeToWantRoute;
@@ -257,44 +245,21 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      *
      * Note: this is not an emergency withdraw function. For that, see panic().
      */
-    function retireStrat() external doUpdateBalance {
-        _onlyStrategistOrOwner();
-        _claimRewards();
-        _swapRewardsToWftm();
-        _swapToWant();
+    // function _retireStrat() internal override doUpdateBalance {
+    //     _claimRewards();
+    //     _swapRewardsToWftm();
+    //     _swapToWant();
 
-        _deleverage(type(uint256).max);
+    //     _deleverage(type(uint256).max);
+    //     _withdrawUnderlyingToVault(balanceOfPool);
+    // }
+
+    /**
+     * Withdraws all funds leaving rewards behind.
+     */
+    function _reclaimWant() internal override {
+         _deleverage(type(uint256).max);
         _withdrawUnderlyingToVault(balanceOfPool);
-    }
-
-    /**
-     * @dev Pauses supplied. Withdraws all funds from Compound, leaving rewards behind.
-     */
-    function panic() external doUpdateBalance {
-        _onlyStrategistOrOwner();
-        _deleverage(type(uint256).max);
-        pause();
-    }
-
-    /**
-     * @dev Unpauses the strat.
-     */
-    function unpause() external {
-        _onlyStrategistOrOwner();
-        _unpause();
-
-        _giveAllowances();
-
-        deposit();
-    }
-
-    /**
-     * @dev Pauses the strat.
-     */
-    function pause() public {
-        _onlyStrategistOrOwner();
-        _pause();
-        _removeAllowances();
     }
 
     /**
@@ -302,7 +267,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * It gets called whenever someone supplied in the strategy's vault contract.
      * It supplies {want} Compound to farm {rewardToken}
      */
-    function deposit() public whenNotPaused doUpdateBalance {
+    function _deposit() internal override doUpdateBalance {
         CErc20I(cWant).mint(balanceOfWant());
         uint256 _ltv = _calculateLTV();
 
@@ -343,41 +308,41 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * @dev This function makes a prediction on how much {rewardToken} is accrued.
      *      It is not 100% accurate as it uses current balances in Compound to predict into the past.
      */
-    function predictScreamAccrued() public view returns (uint256) {
-        // Has no previous harvest to calculate accrual
-        if (lastHarvestTimestamp == 0) {
-            return 0;
-        }
+    // function predictScreamAccrued() public view returns (uint256) {
+    //     // Has no previous harvest to calculate accrual
+    //     if (lastHarvestTimestamp == 0) {
+    //         return 0;
+    //     }
 
-        (uint256 supplied, uint256 borrowed) = getCurrentPosition();
-        if (supplied == 0) {
-            return 0; // should be impossible to have 0 balance and positive comp accrued
-        }
+    //     (uint256 supplied, uint256 borrowed) = getCurrentPosition();
+    //     if (supplied == 0) {
+    //         return 0; // should be impossible to have 0 balance and positive comp accrued
+    //     }
 
-        uint256 distributionPerBlock = comptroller.compSpeeds(address(cWant));
-        uint256 totalBorrow = cWant.totalBorrows();
+    //     uint256 distributionPerBlock = comptroller.compSpeeds(address(cWant));
+    //     uint256 totalBorrow = cWant.totalBorrows();
 
-        // total supply needs to be exchanged to underlying using exchange rate
-        uint256 totalSupplyCtoken = cWant.totalSupply();
-        uint256 totalSupply = (totalSupplyCtoken * cWant.exchangeRateStored()) / MANTISSA;
+    //     // total supply needs to be exchanged to underlying using exchange rate
+    //     uint256 totalSupplyCtoken = cWant.totalSupply();
+    //     uint256 totalSupply = (totalSupplyCtoken * cWant.exchangeRateStored()) / MANTISSA;
 
-        uint256 blockShareSupply = 0;
-        if (totalSupply > 0) {
-            blockShareSupply = (supplied * distributionPerBlock) / totalSupply;
-        }
+    //     uint256 blockShareSupply = 0;
+    //     if (totalSupply > 0) {
+    //         blockShareSupply = (supplied * distributionPerBlock) / totalSupply;
+    //     }
 
-        uint256 blockShareBorrow = 0;
-        if (totalBorrow > 0) {
-            blockShareBorrow = (borrowed * distributionPerBlock) / totalBorrow;
-        }
+    //     uint256 blockShareBorrow = 0;
+    //     if (totalBorrow > 0) {
+    //         blockShareBorrow = (borrowed * distributionPerBlock) / totalBorrow;
+    //     }
 
-        // How much we expect to earn per block
-        uint256 blockShare = blockShareSupply + blockShareBorrow;
-        uint256 secondsPerBlock = 1; // Average FTM block speed
-        uint256 blocksSinceLast = block.timestamp - lastHarvestTimestamp / secondsPerBlock;
+    //     // How much we expect to earn per block
+    //     uint256 blockShare = blockShareSupply + blockShareBorrow;
+    //     uint256 secondsPerBlock = 1; // Average FTM block speed
+    //     uint256 blocksSinceLast = block.timestamp - lastHarvestTimestamp / secondsPerBlock;
 
-        return blocksSinceLast * blockShare;
-    }
+    //     return blocksSinceLast * blockShare;
+    // }
 
     /**
      * @dev Updates the balance. This is the state changing version so it sets
@@ -715,38 +680,38 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     /**
      * @dev Gives the necessary allowances to mint cWant, swap rewards etc
      */
-    function _giveAllowances() internal {
-        IERC20Upgradeable(want).safeIncreaseAllowance(
-            address(cWant),
-            type(uint256).max - IERC20Upgradeable(want).allowance(address(this), address(cWant))
-        );
-        IERC20Upgradeable(nativeToken).safeIncreaseAllowance(
-            UNI_ROUTER,
-            type(uint256).max - IERC20Upgradeable(nativeToken).allowance(address(this), UNI_ROUTER)
-        );
-        IERC20Upgradeable(rewardToken).safeIncreaseAllowance(
-            UNI_ROUTER,
-            type(uint256).max - IERC20Upgradeable(rewardToken).allowance(address(this), UNI_ROUTER)
-        );
-    }
+    // function _giveAllowances() internal {
+    //     IERC20Upgradeable(want).safeIncreaseAllowance(
+    //         address(cWant),
+    //         type(uint256).max - IERC20Upgradeable(want).allowance(address(this), address(cWant))
+    //     );
+    //     IERC20Upgradeable(nativeToken).safeIncreaseAllowance(
+    //         UNI_ROUTER,
+    //         type(uint256).max - IERC20Upgradeable(nativeToken).allowance(address(this), UNI_ROUTER)
+    //     );
+    //     IERC20Upgradeable(rewardToken).safeIncreaseAllowance(
+    //         UNI_ROUTER,
+    //         type(uint256).max - IERC20Upgradeable(rewardToken).allowance(address(this), UNI_ROUTER)
+    //     );
+    // }
 
     /**
      * @dev Removes all allowance that were given
      */
-    function _removeAllowances() internal {
-        IERC20Upgradeable(want).safeDecreaseAllowance(
-            address(cWant),
-            IERC20Upgradeable(want).allowance(address(this), address(cWant))
-        );
-        IERC20Upgradeable(nativeToken).safeDecreaseAllowance(
-            UNI_ROUTER,
-            IERC20Upgradeable(nativeToken).allowance(address(this), UNI_ROUTER)
-        );
-        IERC20Upgradeable(rewardToken).safeDecreaseAllowance(
-            UNI_ROUTER,
-            IERC20Upgradeable(rewardToken).allowance(address(this), UNI_ROUTER)
-        );
-    }
+    // function _removeAllowances() internal {
+    //     IERC20Upgradeable(want).safeDecreaseAllowance(
+    //         address(cWant),
+    //         IERC20Upgradeable(want).allowance(address(this), address(cWant))
+    //     );
+    //     IERC20Upgradeable(nativeToken).safeDecreaseAllowance(
+    //         UNI_ROUTER,
+    //         IERC20Upgradeable(nativeToken).allowance(address(this), UNI_ROUTER)
+    //     );
+    //     IERC20Upgradeable(rewardToken).safeDecreaseAllowance(
+    //         UNI_ROUTER,
+    //         IERC20Upgradeable(rewardToken).allowance(address(this), UNI_ROUTER)
+    //     );
+    // }
 
     /**
      * @dev Helper modifier for functions that need to update the internal balance at the end of their execution.

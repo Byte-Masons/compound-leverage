@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.11;
+pragma solidity ^0.8.0;
 
 import "../interfaces/IStrategy.sol";
 import "../interfaces/IVault.sol";
@@ -9,9 +9,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
-import "hardhat/console.sol";
-
-abstract contract ReaperBaseStrategy is
+abstract contract ReaperBaseStrategyv2 is
     IStrategy,
     UUPSUpgradeable,
     AccessControlEnumerableUpgradeable,
@@ -30,12 +28,27 @@ abstract contract ReaperBaseStrategy is
     uint256 public harvestLogCadence;
     uint256 public lastHarvestTimestamp;
 
+    uint256 public upgradeProposalTime;
+
     /**
-     * Reaper Roles
+     * Reaper Roles in increasing order of privilege.
+     * {KEEPER} - Stricly permissioned trustless access for off-chain programs or third party keepers.
+     * {STRATEGIST} - Role conferred to authors of the strategy, allows for tweaking non-critical params.
+     * {GUARDIAN} - Multisig requiring 2 signatures for emergency measures such as pausing and panicking.
+     * {ADMIN}- Multisig requiring 3 signatures for unpausing.
+     *
+     * The DEFAULT_ADMIN_ROLE (in-built access control role) will be granted to a multisig requiring 4
+     * signatures. This role would have upgrading capability, as well as the ability to grant any other
+     * roles.
+     *
+     * Also note that roles are cascading. So any higher privileged role should be able to perform all the functions
+     * of any lower privileged role.
      */
-    bytes32 public constant STRATEGIST = keccak256("STRATEGIST");
-    bytes32 public constant STRATEGIST_MULTISIG = keccak256("STRATEGIST_MULTISIG");
     bytes32 public constant KEEPER = keccak256("KEEPER");
+    bytes32 public constant STRATEGIST = keccak256("STRATEGIST");
+    bytes32 public constant GUARDIAN = keccak256("GUARDIAN");
+    bytes32 public constant ADMIN = keccak256("ADMIN");
+    bytes32[] private cascadingAccess;
 
     /**
      * @dev Reaper contracts:
@@ -64,15 +77,12 @@ abstract contract ReaperBaseStrategy is
      * {callFee} - Percent of the totalFee reserved for the harvester (1000 = 10% of total fee: 0.45% by default)
      * {treasuryFee} - Percent of the totalFee taken by maintainers of the software (9000 = 90% of total fee: 4.05% by default)
      * {strategistFee} - Percent of the treasuryFee taken by strategist (2500 = 25% of treasury fee: 1.0125% by default)
-     *
-     * {securityFee} - Fee taxed when a user withdraws funds. Taken to prevent flash deposit/harvest attacks.
-     * These funds are redistributed to stakers in the pool.
+
      */
     uint256 public totalFee;
     uint256 public callFee;
     uint256 public treasuryFee;
     uint256 public strategistFee;
-    uint256 public securityFee; // unused but cannot remove between upgrades
 
     /**
      * {TotalFeeUpdated} Event that is fired each time the total fee is updated.
@@ -85,30 +95,24 @@ abstract contract ReaperBaseStrategy is
     event StratHarvest(address indexed harvester);
     event StrategistRemitterUpdated(address newStrategistRemitter);
 
-    uint256 public upgradeProposalTime;
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() initializer {}
 
     function __ReaperBaseStrategy_init(
         address _vault,
         address[] memory _feeRemitters,
-        address[] memory _strategists
+        address[] memory _strategists,
+        address[] memory _multisigRoles
     ) internal onlyInitializing {
-        console.log("__ReaperBaseStrategy_init");
         __UUPSUpgradeable_init();
         __AccessControlEnumerable_init();
         __Pausable_init_unchained();
 
-        harvestLogCadence = 1 hours;
+        harvestLogCadence = 1 minutes;
         totalFee = 450;
         callFee = 1000;
         treasuryFee = 9000;
         strategistFee = 2500;
-        securityFee = 10;
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        clearUpgradeCooldown();
 
         vault = _vault;
         treasury = _feeRemitters[0];
@@ -118,7 +122,36 @@ abstract contract ReaperBaseStrategy is
             _grantRole(STRATEGIST, _strategists[i]);
         }
 
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _multisigRoles[0]);
+        _grantRole(ADMIN, _multisigRoles[1]);
+        _grantRole(GUARDIAN, _multisigRoles[2]);
+
+        cascadingAccess = [DEFAULT_ADMIN_ROLE, ADMIN, GUARDIAN, STRATEGIST, KEEPER];
+        clearUpgradeCooldown();
         harvestLog.push(Harvest({timestamp: block.timestamp, vaultSharePrice: IVault(_vault).getPricePerFullShare()}));
+    }
+
+    /**
+     * @dev Function that puts the funds to work.
+     *      It gets called whenever someone deposits in the strategy's vault contract.
+     *      Deposits go through only when the strategy is not paused.
+     */
+    function deposit() public override whenNotPaused {
+        _deposit();
+    }
+
+    /**
+     * @dev Withdraws funds and sends them back to the vault. Can only
+     *      be called by the vault. _amount must be valid and security fee
+     *      is deducted up-front.
+     */
+    function withdraw(uint256 _amount) external override {
+        require(msg.sender == vault);
+        require(_amount != 0);
+        require(_amount <= balanceOf());
+
+        _withdraw(_amount);
     }
 
     /**
@@ -148,7 +181,7 @@ abstract contract ReaperBaseStrategy is
      *      log entries. APR is multiplied by PERCENT_DIVISOR to retain precision.
      */
     function averageAPRAcrossLastNHarvests(int256 _n) external view returns (int256) {
-        require(harvestLog.length >= 2, "need at least 2 log entries");
+        require(harvestLog.length >= 2);
 
         int256 runningAPRSum;
         int256 numLogsProcessed;
@@ -162,18 +195,60 @@ abstract contract ReaperBaseStrategy is
     }
 
     /**
-     * @dev Only strategist or owner can edit the log cadence.
+     * @dev Strategists and roles with higher privilege can edit the log cadence.
      */
-    function updateHarvestLogCadence(uint256 _newCadenceInSeconds) external {
-        _onlyStrategistOrOwner();
+    function updateHarvestLogCadence(uint256 _newCadenceInSeconds) external atLeastRole(STRATEGIST) {
         harvestLogCadence = _newCadenceInSeconds;
     }
 
     /**
-     * @dev updates the total fee, capped at 5%; only owner.
+     * @dev Function to calculate the total {want} held by the strat.
+     *      It takes into account both the funds in hand, plus the funds in external contracts.
      */
-    function updateTotalFee(uint256 _totalFee) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_totalFee <= MAX_FEE, "Fee Too High");
+    function balanceOf() public view virtual override returns (uint256);
+
+    /**
+     * @dev Function to retire the strategy. Claims all rewards and withdraws
+     *      all principal from external contracts, and sends everything back to
+     *      the vault. Guardian and roles with higher privilege can retire the strat.
+     *
+     * Note: this is not an emergency withdraw function. For that, see panic().
+     */
+    // function retireStrat() external override atLeastRole(GUARDIAN) {
+    //     _retireStrat();
+    // }
+
+    /**
+     * @dev Pauses deposits. Withdraws all funds leaving rewards behind.
+     *      Guardian and roles with higher privilege can panic.
+     */
+    function panic() external override atLeastRole(GUARDIAN) {
+        _reclaimWant();
+        pause();
+    }
+
+    /**
+     * @dev Pauses the strat. Deposits become disabled but users can still
+     *      withdraw. Guardian and roles with higher privilege can pause.
+     */
+    function pause() public override atLeastRole(GUARDIAN) {
+        _pause();
+    }
+
+    /**
+     * @dev Unpauses the strat. Opens up deposits again and invokes deposit().
+     *      Admin and roles with higher privilege can unpause.
+     */
+    function unpause() external override atLeastRole(ADMIN) {
+        _unpause();
+        deposit();
+    }
+
+    /**
+     * @dev updates the total fee, capped at 5%; only DEFAULT_ADMIN_ROLE.
+     */
+    function updateTotalFee(uint256 _totalFee) external atLeastRole(DEFAULT_ADMIN_ROLE) {
+        require(_totalFee <= MAX_FEE);
         totalFee = _totalFee;
         emit TotalFeeUpdated(totalFee);
     }
@@ -185,15 +260,15 @@ abstract contract ReaperBaseStrategy is
      *      strategist fee is expressed as % of the treasury fee and
      *      must be no more than STRATEGIST_MAX_FEE
      *
-     *      only owner
+     *      only DEFAULT_ADMIN_ROLE.
      */
     function updateFees(
         uint256 _callFee,
         uint256 _treasuryFee,
         uint256 _strategistFee
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (bool) {
-        require(_callFee + _treasuryFee == PERCENT_DIVISOR, "sum != PERCENT_DIVISOR");
-        require(_strategistFee <= STRATEGIST_MAX_FEE, "strategist fee > STRATEGIST_MAX_FEE");
+    ) external atLeastRole(DEFAULT_ADMIN_ROLE) returns (bool) {
+        require(_callFee + _treasuryFee == PERCENT_DIVISOR);
+        require(_strategistFee <= STRATEGIST_MAX_FEE);
 
         callFee = _callFee;
         treasuryFee = _treasuryFee;
@@ -203,56 +278,25 @@ abstract contract ReaperBaseStrategy is
     }
 
     /**
-     * @dev only owner can update treasury address.
+     * @dev only DEFAULT_ADMIN_ROLE can update treasury address.
      */
-    function updateTreasury(address newTreasury) external onlyRole(DEFAULT_ADMIN_ROLE) returns (bool) {
+    function updateTreasury(address newTreasury) external atLeastRole(DEFAULT_ADMIN_ROLE) returns (bool) {
         treasury = newTreasury;
         return true;
     }
 
     /**
-     * @dev Updates the current strategistRemitter.
-     *      If there is only one strategist this function may be called by
-     *      that strategist. However if there are multiple strategists
-     *      this function may only be called by the STRATEGIST_MULTISIG role.
+     * @dev Updates the current strategistRemitter. Only DEFAULT_ADMIN_ROLE may do this.
      */
-    function updateStrategistRemitter(address _newStrategistRemitter) external {
-        if (getRoleMemberCount(STRATEGIST) == 1) {
-            _checkRole(STRATEGIST, msg.sender);
-        } else {
-            _checkRole(STRATEGIST_MULTISIG, msg.sender);
-        }
-
-        require(_newStrategistRemitter != address(0), "!0");
+    function updateStrategistRemitter(address _newStrategistRemitter) external atLeastRole(DEFAULT_ADMIN_ROLE) {
+        require(_newStrategistRemitter != address(0));
         strategistRemitter = _newStrategistRemitter;
         emit StrategistRemitterUpdated(_newStrategistRemitter);
     }
 
     /**
-     * @dev DEFAULT_ADMIN_ROLE must call this function prior to upgrading the implementation
-     *      and wait UPGRADE_TIMELOCK seconds before executing the upgrade.
+     * @dev Project an APR using the vault share price change between harvests at the provided indices.
      */
-    function initiateUpgradeCooldown() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        upgradeProposalTime = block.timestamp;
-    }
-
-    /**
-     * @dev This function is called:
-     *      - in initialize()
-     *      - as part of a successful upgrade
-     *      - manually by DEFAULT_ADMIN_ROLE to clear the upgrade cooldown.
-     */
-    function clearUpgradeCooldown() public onlyRole(DEFAULT_ADMIN_ROLE) {
-        upgradeProposalTime = block.timestamp + (ONE_YEAR * 100);
-    }
-
-    /**
-     * @dev Only allow access to strategist or owner
-     */
-    function _onlyStrategistOrOwner() internal view {
-        require(hasRole(STRATEGIST, msg.sender) || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "Not authorized");
-    }
-
     function calculateAPRUsingLogs(uint256 _startIndex, uint256 _endIndex) public view returns (int256) {
         Harvest storage start = harvestLog[_startIndex];
         Harvest storage end = harvestLog[_endIndex];
@@ -282,12 +326,73 @@ abstract contract ReaperBaseStrategy is
     }
 
     /**
-     * @dev Returns the approx amount of profit from harvesting plus fee that
-     *      would be returned to harvest caller.
+     * @dev This function must be called prior to upgrading the implementation.
+     *      It's required to wait UPGRADE_TIMELOCK seconds before executing the upgrade.
+     *      Strategists and roles with higher privilege can initiate this cooldown.
      */
-    function estimateHarvest() external view virtual returns (uint256 profit, uint256 callFeeToUser);
+    function initiateUpgradeCooldown() external atLeastRole(STRATEGIST) {
+        upgradeProposalTime = block.timestamp;
+    }
 
-    function balanceOf() public view virtual override returns (uint256);
+    /**
+     * @dev This function is called:
+     *      - in initialize()
+     *      - as part of a successful upgrade
+     *      - manually to clear the upgrade cooldown.
+     * Guardian and roles with higher privilege can clear this cooldown.
+     */
+    function clearUpgradeCooldown() public atLeastRole(GUARDIAN) {
+        upgradeProposalTime = block.timestamp + (ONE_YEAR * 100);
+    }
+
+    /**
+     * @dev This function must be overriden simply for access control purposes.
+     *      Only DEFAULT_ADMIN_ROLE can upgrade the implementation once the timelock
+     *      has passed.
+     */
+    function _authorizeUpgrade(address) internal override atLeastRole(DEFAULT_ADMIN_ROLE) {
+        require(upgradeProposalTime + UPGRADE_TIMELOCK < block.timestamp);
+        clearUpgradeCooldown();
+    }
+
+    /**
+     * @dev Modifier that checks cascading role privileges. Any higher privileged role should be able
+     * to perform all the functions of any lower privileged role. This is accomplished using the
+     * {cascadingAccess} array that lists all roles from most privileged to least privileged.
+     */
+    modifier atLeastRole(bytes32 role) {
+        uint256 numRoles = cascadingAccess.length;
+        uint256 specifiedRoleIndex;
+        for (uint256 i = 0; i < numRoles; i++) {
+            if (role == cascadingAccess[i]) {
+                specifiedRoleIndex = i;
+                break;
+            } else if (i == numRoles - 1) {
+                revert("invalid role specified");
+            }
+        }
+
+        for (uint256 i = 0; i <= specifiedRoleIndex; i++) {
+            if (hasRole(cascadingAccess[i], msg.sender)) {
+                break;
+            } else if (i == specifiedRoleIndex) {
+                revert("unauthorized access");
+            }
+        }
+        _;
+    }
+
+    /**
+     * @dev subclasses should add their custom deposit logic in this function.
+     */
+    function _deposit() internal virtual;
+
+    /**
+     * @dev subclasses should add their custom withdraw logic in this function.
+     *      Note that security fee has already been deducted, so it shouldn't be deducted
+     *      again within this function.
+     */
+    function _withdraw(uint256 _amount) internal virtual;
 
     /**
      * @dev subclasses should add their custom harvesting logic in this function
@@ -296,12 +401,18 @@ abstract contract ReaperBaseStrategy is
     function _harvestCore() internal virtual;
 
     /**
-     * @dev This function must be overriden simply for access control purposes.
-     *      Only DEFAULT_ADMIN_ROLE can upgrade the implementation once the timelock
-     *      has passed.
+     * @dev subclasses should add their custom logic to retire the strategy in this function.
+     *      Note that we expect all funds (including any pending rewards) to be sent back to
+     *      the vault in this function.
      */
-    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(upgradeProposalTime + UPGRADE_TIMELOCK < block.timestamp, "cooldown not initiated or still active");
-        clearUpgradeCooldown();
-    }
+    // function _retireStrat() internal virtual;
+
+    /**
+     * @dev subclasses should add their custom logic to withdraw the principal from
+     *      any external contracts in this function. Note that we don't care about rewards,
+     *      we just want to reclaim our principal as much as possible, and as quickly as possible.
+     *      So keep this function lean. Principal should be left in the strategy and not sent to
+     *      the vault.
+     */
+    function _reclaimWant() internal virtual;
 }
