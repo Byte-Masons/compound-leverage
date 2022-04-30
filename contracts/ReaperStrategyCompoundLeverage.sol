@@ -9,8 +9,6 @@ import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 pragma solidity 0.8.11;
 
-import "hardhat/console.sol";
-
 /**
  * @dev This strategy will deposit and leverage a token on Compound to maximize yield by farming reward tokens
  */
@@ -69,6 +67,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * {minWantToLeverage} - The minimum amount of want to leverage in a loop
      * {withdrawSlippageTolerance} - Maximum slippage authorized when withdrawing
      * {isDualRewardActive} - Maximum slippage authorized when withdrawing
+     * {dualRewardIndex} - The index of the dual reward in the reward distributor
      */
     uint256 public targetLTV;
     uint256 public allowedLTVDrift;
@@ -79,6 +78,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
     uint256 public minRewardToSell;
     uint256 public withdrawSlippageTolerance;
     bool public isDualRewardActive;
+    uint8 public dualRewardIndex;
 
     /**
      * @dev Initializes the strategy. Sets parameters, saves routes, and gives allowances.
@@ -88,17 +88,16 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         address _vault,
         address[] memory _feeRemitters,
         address[] memory _strategists,
-        address _scWant
+        address _cWant
     ) public initializer {
         __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists);
-        console.log("initialize");
-        cWant = CErc20I(_scWant);
-        markets = [_scWant];
+        cWant = CErc20I(_cWant);
+        markets = [_cWant];
         comptroller = IComptroller(cWant.comptroller());
         want = cWant.underlying();
         nativeToWantRoute = [nativeToken, want];
         rewardToNativeRoute = [rewardToken, nativeToken];
-
+        
         targetLTV = 0.72 ether;
         allowedLTVDrift = 0.01 ether;
         balanceOfPool = 0;
@@ -108,7 +107,9 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
         dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
+        dualRewardToNativeRoute = [dualRewardToken, nativeToken];
         isDualRewardActive = true;
+        dualRewardIndex = 1;
 
         _giveAllowances();
 
@@ -633,10 +634,10 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategy {
      * Get rewards from markets entered
      */
     function _claimRewards() internal {
-        CTokenI[] memory tokens = new CTokenI[](1);
-        tokens[0] = cWant;
-
-        comptroller.claimComp(address(this), tokens);
+        IRewardDistributor(REWARD_DISTRIBUTOR).claimReward(0, payable(address(this)), markets);
+        if (isDualRewardActive) {
+            IRewardDistributor(REWARD_DISTRIBUTOR).claimReward(dualRewardIndex, payable(address(this)), markets);
+        }
     }
 
     /**

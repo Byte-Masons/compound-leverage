@@ -51,7 +51,7 @@ interface IRewardDistributor {
     function claimReward(
         uint8 rewardType,
         address payable holder,
-        CTokenI[] memory cTokens
+        address[] memory cTokens
     ) external;
 
     /**
@@ -65,7 +65,7 @@ interface IRewardDistributor {
     function claimReward(
         uint8 rewardType,
         address payable[] memory holders,
-        CTokenI[] memory cTokens,
+        address[] memory cTokens,
         bool borrowers,
         bool suppliers
     ) external payable;
