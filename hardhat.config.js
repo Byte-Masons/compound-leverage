@@ -5,12 +5,12 @@ require('solidity-coverage');
 require('@openzeppelin/hardhat-upgrades');
 require('hardhat-contract-sizer');
 
-const { devAccount } = require('./secrets.json');
+const { devAccount, rpc } = require('./secrets.json');
 
 module.exports = {
   networks: {
     aurora: {
-      url: 'https://mainnet.aurora.dev/GGa5BKpfzNSefWg7AEdnAbDTfHH2VSMhc6r5D7EsE6Ha',
+      url: rpc,
       accounts: [devAccount],
     },
   },
