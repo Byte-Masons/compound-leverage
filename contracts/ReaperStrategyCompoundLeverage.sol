@@ -105,9 +105,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         nativeToFeesRoute = [nativeToken, feesToken];
         nativeToWantRoute = [nativeToken, want];
 
-        (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
-        targetLTV = collateralFactorMantissa * LTV_SAFETY_ZONE;
         allowedLTVDrift = 0.01 ether;
+        setTargetLtv(type(uint256).max);
         balanceOfPool = 0;
         borrowDepth = 12;
         minWantToLeverage = 1000;
@@ -333,11 +332,15 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Sets a new LTV for leveraging.
      * Should be in units of 1e18
      */
-    function setTargetLtv(uint256 _ltv) external {
+    function setTargetLtv(uint256 _ltv) public {
         _atLeastRole(KEEPER);
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
+        uint256 maxSafeLTV = (collateralFactorMantissa * LTV_SAFETY_ZONE) / MANTISSA;
+        if (_ltv > maxSafeLTV) {
+            _ltv = maxSafeLTV;
+        }
+
         require(collateralFactorMantissa > _ltv + allowedLTVDrift);
-        require(_ltv <= (collateralFactorMantissa * LTV_SAFETY_ZONE) / MANTISSA);
         targetLTV = _ltv;
     }
 
@@ -672,21 +675,24 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
             cWant.repayBorrow(deleveragedAmount);
         }
     }
-    /** 
-     * @dev Gives the necessary allowances to mint cWant, swap rewards etc  
-     */ 
-    function _giveAllowances() internal {   
-        IERC20Upgradeable(want).safeIncreaseAllowance(  
-            address(cWant), 
-            type(uint256).max   
-        );  
-    }   
-    /** 
-     * @dev Removes all allowance that were given   
-     */ 
-    function _removeAllowances() internal { 
-        IERC20Upgradeable(want).safeDecreaseAllowance(address(cWant), IERC20Upgradeable(want).allowance(address(this), address(cWant)));
+
+    /**
+     * @dev Gives the necessary allowances to mint cWant, swap rewards etc
+     */
+    function _giveAllowances() internal {
+        IERC20Upgradeable(want).safeIncreaseAllowance(address(cWant), type(uint256).max);
     }
+
+    /**
+     * @dev Removes all allowance that were given
+     */
+    function _removeAllowances() internal {
+        IERC20Upgradeable(want).safeDecreaseAllowance(
+            address(cWant),
+            IERC20Upgradeable(want).allowance(address(this), address(cWant))
+        );
+    }
+
     /**
      * @dev Helper modifier for functions that need to update the internal balance at the end of their execution.
      */
