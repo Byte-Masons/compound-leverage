@@ -241,6 +241,7 @@ abstract contract ReaperBaseStrategyv2 is
     function pause() public override {
         _atLeastRole(GUARDIAN);
         _pause();
+        _removeAllowances();
     }
 
     /**
@@ -250,6 +251,7 @@ abstract contract ReaperBaseStrategyv2 is
     function unpause() external override {
         _atLeastRole(ADMIN);
         _unpause();
+        _giveAllowances();
         deposit();
     }
 
@@ -430,4 +432,16 @@ abstract contract ReaperBaseStrategyv2 is
      *      the vault.
      */
     function _reclaimWant() internal virtual;
+
+    /**
+     * @dev subclasses should add their custom logic to give allowances to external contracts
+     *      so the strategy can successfully interface with them.
+     */
+    function _giveAllowances() internal virtual;
+
+    /**
+     * @dev subclasses should add their custom logic to remove all allowances for any external
+     *      contracts.
+     */
+    function _removeAllowances() internal virtual;
 }

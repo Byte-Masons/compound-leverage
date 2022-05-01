@@ -679,18 +679,16 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     /**
      * @dev Gives the necessary allowances to mint cWant, swap rewards etc
      */
-    function _giveAllowances() internal {
-        IERC20Upgradeable(want).safeIncreaseAllowance(address(cWant), type(uint256).max);
+    function _giveAllowances() internal override {
+        IERC20Upgradeable(want).safeApprove(address(cWant), 0);
+        IERC20Upgradeable(want).safeApprove(address(cWant), type(uint256).max);
     }
 
     /**
      * @dev Removes all allowance that were given
      */
-    function _removeAllowances() internal {
-        IERC20Upgradeable(want).safeDecreaseAllowance(
-            address(cWant),
-            IERC20Upgradeable(want).allowance(address(this), address(cWant))
-        );
+    function _removeAllowances() internal override {
+        IERC20Upgradeable(want).safeApprove(address(cWant), 0);
     }
 
     /**
