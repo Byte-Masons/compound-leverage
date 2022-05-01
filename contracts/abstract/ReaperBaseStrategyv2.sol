@@ -151,9 +151,9 @@ abstract contract ReaperBaseStrategyv2 is
      *      is deducted up-front.
      */
     function withdraw(uint256 _amount) external override {
-        require(msg.sender == vault, '!vault');
-        require(_amount != 0, 'invalid amount');
-        require(_amount <= balanceOf(), 'invalid amount');
+        require(msg.sender == vault);
+        require(_amount != 0);
+        require(_amount <= balanceOf());
 
         _withdraw(_amount);
     }
@@ -185,7 +185,7 @@ abstract contract ReaperBaseStrategyv2 is
      *      log entries. APR is multiplied by PERCENT_DIVISOR to retain precision.
      */
     function averageAPRAcrossLastNHarvests(int256 _n) external view returns (int256) {
-        require(harvestLog.length >= 2, 'need at least 2 log entries');
+        require(harvestLog.length >= 2);
 
         int256 runningAPRSum;
         int256 numLogsProcessed;
@@ -260,7 +260,7 @@ abstract contract ReaperBaseStrategyv2 is
      */
     function updateTotalFee(uint256 _totalFee) external {
         _atLeastRole(DEFAULT_ADMIN_ROLE);
-        require(_totalFee <= MAX_FEE, 'Fee Too High');
+        require(_totalFee <= MAX_FEE);
         totalFee = _totalFee;
         emit TotalFeeUpdated(totalFee);
     }
@@ -280,8 +280,8 @@ abstract contract ReaperBaseStrategyv2 is
         uint256 _strategistFee
     ) external returns (bool) {
         _atLeastRole(DEFAULT_ADMIN_ROLE);
-        require(_callFee + _treasuryFee == PERCENT_DIVISOR, 'sum != PERCENT_DIVISOR');
-        require(_strategistFee <= STRATEGIST_MAX_FEE, 'strategist fee > STRATEGIST_MAX_FEE');
+        require(_callFee + _treasuryFee == PERCENT_DIVISOR);
+        require(_strategistFee <= STRATEGIST_MAX_FEE);
 
         callFee = _callFee;
         treasuryFee = _treasuryFee;
@@ -304,7 +304,7 @@ abstract contract ReaperBaseStrategyv2 is
      */
     function updateStrategistRemitter(address _newStrategistRemitter) external {
         _atLeastRole(DEFAULT_ADMIN_ROLE);
-        require(_newStrategistRemitter != address(0), '!0');
+        require(_newStrategistRemitter != address(0));
         strategistRemitter = _newStrategistRemitter;
         emit StrategistRemitterUpdated(_newStrategistRemitter);
     }
@@ -369,7 +369,7 @@ abstract contract ReaperBaseStrategyv2 is
      */
     function _authorizeUpgrade(address) internal override {
         _atLeastRole(DEFAULT_ADMIN_ROLE);
-        require(upgradeProposalTime + UPGRADE_TIMELOCK < block.timestamp, 'cooldown not initiated or still active');
+        require(upgradeProposalTime + UPGRADE_TIMELOCK < block.timestamp);
         clearUpgradeCooldown();
     }
 
@@ -386,7 +386,7 @@ abstract contract ReaperBaseStrategyv2 is
                 specifiedRoleIndex = i;
                 break;
             } else if (i == numRoles - 1) {
-                revert('invalid role specified');
+                revert();
             }
         }
 
@@ -394,7 +394,7 @@ abstract contract ReaperBaseStrategyv2 is
             if (hasRole(cascadingAccess[i], msg.sender)) {
                 break;
             } else if (i == specifiedRoleIndex) {
-                revert('unauthorized access');
+                revert();
             }
         }
     }
