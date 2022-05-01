@@ -61,7 +61,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      */
     address[] public markets;
     uint256 public constant MANTISSA = 1e18;
-    uint256 public constant LTV_SAFETY_ZONE = 0.98 ether;
+    uint256 public constant LTV_SAFETY_ZONE = 0.97 ether;
 
     /**
      * @dev Strategy variables
@@ -105,7 +105,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         nativeToFeesRoute = [nativeToken, feesToken];
         nativeToWantRoute = [nativeToken, want];
 
-        targetLTV = 0.83 ether;
+        (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
+        targetLTV = collateralFactorMantissa * LTV_SAFETY_ZONE;
         allowedLTVDrift = 0.01 ether;
         balanceOfPool = 0;
         borrowDepth = 12;
@@ -394,8 +395,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         address[] calldata _newDualRewardToNativeRoute
     ) external {
         _atLeastRole(STRATEGIST);
-        require(_newDualRewardToNativeRoute[0] == _dualRewardToken, 'bad route');
-        require(_newDualRewardToNativeRoute[_newDualRewardToNativeRoute.length - 1] == nativeToken, 'bad route');
+        require(_newDualRewardToNativeRoute[0] == _dualRewardToken);
+        require(_newDualRewardToNativeRoute[_newDualRewardToNativeRoute.length - 1] == nativeToken);
         isDualRewardActive = _isDualRewardActive;
         dualRewardToken = _dualRewardToken;
         dualRewardIndex = _dualRewardIndex;
