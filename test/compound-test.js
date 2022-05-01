@@ -16,7 +16,8 @@ const toWantUnit = (num, isUSDC = false) => {
   return ethers.utils.parseEther(num);
 };
 
-const getTargetLtv = async(strategy) => await strategy.targetLTV();
+const assetSafeMaxLTV = '0.83';
+const getTargetLtv = async strategy => await strategy.targetLTV();
 
 describe('Vaults', function () {
   let Vault;
@@ -37,18 +38,18 @@ describe('Vaults', function () {
   let owner;
 
   beforeEach(async function () {
-    //reset network
+    // reset network
     await network.provider.request({
       method: 'hardhat_reset',
       params: [
         {
           forking: {
-            jsonRpcUrl: 'https://mainnet.aurora.dev/'
+            jsonRpcUrl: 'https://mainnet.aurora.dev/',
           },
         },
       ],
     });
-    //get signers
+    // get signers
     [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
     const wantHolder = '0xab57baBf2cE17f8a7661Cbc24fc515CeA77f930B';
     const wantWhaleAddress = '0x1d50a8c3295798fcebddd0c720bec4fbedc3d178';
@@ -71,13 +72,13 @@ describe('Vaults', function () {
     selfAddress = await self.getAddress();
     ownerAddress = await owner.getAddress();
 
-    //get artifacts
+    // get artifacts
     Strategy = await ethers.getContractFactory('ReaperStrategyCompoundLeverage');
     Vault = await ethers.getContractFactory('ReaperVaultv1_3');
     Treasury = await ethers.getContractFactory('ReaperTreasury');
     Want = await ethers.getContractFactory('@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20');
 
-    //deploy contracts
+    // deploy contracts
     treasury = await Treasury.deploy();
     want = await Want.attach(wantAddress);
     vault = await Vault.deploy(
@@ -105,7 +106,7 @@ describe('Vaults', function () {
 
     await vault.initialize(strategy.address);
 
-    //approving LP token and vault share spend
+    // approving LP token and vault share spend
     await want.approve(vault.address, ethers.utils.parseEther('1000000000'));
     await want.connect(wantWhale).approve(vault.address, ethers.utils.parseEther('1000000000'));
     await want.connect(self).approve(vault.address, ethers.utils.parseEther('1000000000'));
@@ -144,7 +145,7 @@ describe('Vaults', function () {
 
       const ltv = await strategy.calculateLTV();
       const allowedLTVDrift = toWantUnit('0.015');
-      expect(ltv).to.be.closeTo(toWantUnit('0.83'), allowedLTVDrift);
+      expect(ltv).to.be.closeTo(toWantUnit(assetSafeMaxLTV), allowedLTVDrift);
     });
 
     it('should trigger deleveraging on deposit when LTV is too high', async function () {
@@ -153,7 +154,7 @@ describe('Vaults', function () {
       const ltvBefore = await strategy.calculateLTV();
       const allowedLTVDrift = toWantUnit('0.015');
       const targetLTV = getTargetLtv(strategy);
-      expect(ltvBefore).to.be.closeTo(toWantUnit('0.83'), allowedLTVDrift);
+      expect(ltvBefore).to.be.closeTo(toWantUnit(assetSafeMaxLTV), allowedLTVDrift);
       const newLTV = toWantUnit('0');
       await strategy.setTargetLtv(newLTV);
       const smallDepositAmount = toWantUnit('1', true);
@@ -164,7 +165,7 @@ describe('Vaults', function () {
 
     it('should not change leverage when LTV is within the allowed drift on deposit', async function () {
       const depositAmount = toWantUnit('100', true);
-      const ltv = toWantUnit('0.83');
+      const ltv = toWantUnit(assetSafeMaxLTV);
       await vault.connect(self).deposit(depositAmount);
       const ltvBefore = await strategy.calculateLTV();
       const allowedLTVDrift = toWantUnit('0.015');
@@ -220,7 +221,7 @@ describe('Vaults', function () {
       const ltvBefore = await strategy.calculateLTV();
       const allowedLTVDrift = toWantUnit('0.01');
       expect(ltvBefore).to.be.closeTo(startingLTV, allowedLTVDrift);
-      const newLTV = toWantUnit('0.83');
+      const newLTV = toWantUnit(assetSafeMaxLTV);
       await strategy.setTargetLtv(newLTV);
       const smallWithdrawAmount = toWantUnit('1', true);
       const userBalance = await want.balanceOf(selfAddress);
@@ -235,7 +236,7 @@ describe('Vaults', function () {
     });
 
     it('should trigger deleveraging on withdraw when LTV is too high', async function () {
-      const startingLTV = toWantUnit('0.83');
+      const startingLTV = toWantUnit(assetSafeMaxLTV);
       await strategy.setTargetLtv(startingLTV);
       const depositAmount = toWantUnit('100', true);
 
@@ -258,7 +259,7 @@ describe('Vaults', function () {
     });
 
     it('should not change leverage on withdraw when still in the allowed LTV', async function () {
-      const startingLTV = toWantUnit('0.83');
+      const startingLTV = toWantUnit(assetSafeMaxLTV);
       await strategy.setTargetLtv(startingLTV);
       const depositAmount = toWantUnit('100', true);
 
