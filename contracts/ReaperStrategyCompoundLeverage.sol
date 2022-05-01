@@ -386,17 +386,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev Sets the swap path to go from {nativeToken} to {want}.
-     */
-    function setNativeToWantRoute(address[] calldata _newNativeToWantRoute) external {
-        _atLeastRole(STRATEGIST);
-        require(_newNativeToWantRoute[0] == nativeToken, 'bad route');
-        require(_newNativeToWantRoute[_newNativeToWantRoute.length - 1] == want, 'bad route');
-        delete nativeToWantRoute;
-        nativeToWantRoute = _newNativeToWantRoute;
-    }
-
-    /**
      * @dev Configure variables for the dual reward
      */
     function configureDualReward(
