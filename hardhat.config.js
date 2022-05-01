@@ -10,7 +10,7 @@ const { devAccount, rpc } = require('./secrets.json');
 module.exports = {
   networks: {
     aurora: {
-      url: rpc,
+      url: 'https://mainnet.aurora.dev',
       accounts: [devAccount],
     },
   },

@@ -17,12 +17,15 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
 
     /**
      * @dev Tokens Used:
-     * {nativeToken} - Required for liquidity routing when doing swaps. Also used to charge fees on yield.
+     * {nativeToken} - Required for liquidity routing when doing swaps.
+     * {feesToken} - Token in which fees is charged.
      * {rewardToken} - The reward token for farming
+     * {dualRewardToken} - Secondary reward token if applicable.
      * {want} - The vault token the strategy is maximizing
      * {cWant} - The Compound version of the want token
      */
-    address public constant nativeToken = address(0xC9BdeEd33CD01541e1eeD10f90519d2C06Fe3feB);
+    address public constant nativeToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
+    address public constant feesToken = address(0xB12BFcA5A55806AaF64E99521918A4bf0fC40802);
     address public constant rewardToken = address(0x9f1F933C660a1DC856F0E0Fe058435879c5CCEf0);
     address public dualRewardToken;
     address public want;
@@ -42,10 +45,12 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Routes we take to swap tokens
      * {rewardToNativeRoute} - Route we take to get from {rewardToken} into {nativeToken}.
      * {dualRewardToNativeRoute} - Route we take to get from {dualRewardToken} into {nativeToken}.
+     * {nativeToFeesRoute} - Route we take to get from {nativeToken} into {feesToken}.
      * {nativeToWantRoute} - Route we take to get from {nativeToken} into {want}.
      */
     address[] public rewardToNativeRoute;
     address[] public dualRewardToNativeRoute;
+    address[] public nativeToFeesRoute;
     address[] public nativeToWantRoute;
 
     /**
@@ -56,7 +61,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      */
     address[] public markets;
     uint256 public constant MANTISSA = 1e18;
-    uint256 public constant LTV_SAFETY_ZONE = 0.98 ether;
+    uint256 public constant LTV_SAFETY_ZONE = 0.97 ether;
 
     /**
      * @dev Strategy variables
@@ -96,10 +101,12 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         markets = [_cWant];
         comptroller = IComptroller(cWant.comptroller());
         want = cWant.underlying();
-        nativeToWantRoute = [nativeToken, want];
         rewardToNativeRoute = [rewardToken, nativeToken];
+        nativeToFeesRoute = [nativeToken, feesToken];
+        nativeToWantRoute = [nativeToken, want];
 
-        targetLTV = 0.72 ether;
+        (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
+        targetLTV = collateralFactorMantissa * LTV_SAFETY_ZONE;
         allowedLTVDrift = 0.01 ether;
         balanceOfPool = 0;
         borrowDepth = 12;
@@ -108,10 +115,9 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
         dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
-        dualRewardToNativeRoute = [dualRewardToken, nativeToken];
         isDualRewardActive = true;
         dualRewardIndex = 1;
-
+        _giveAllowances();
         comptroller.enterMarkets(markets);
     }
 
@@ -121,9 +127,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * It supplies {want} Compound to farm {rewardToken}
      */
     function _deposit() internal override doUpdateBalance {
-        IERC20Upgradeable(want).safeIncreaseAllowance(address(cWant), balanceOfWant());
         CErc20I(cWant).mint(balanceOfWant());
-        uint256 _ltv = _calculateLTV();
+        uint256 _ltv = _calculateLTVAfterWithdraw(0);
 
         if (_shouldLeverage(_ltv)) {
             _leverMax();
@@ -222,15 +227,20 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      */
     function _chargeFees() internal {
         uint256 nativeFee = (IERC20Upgradeable(nativeToken).balanceOf(address(this)) * totalFee) / PERCENT_DIVISOR;
-        if (nativeFee != 0) {
-            uint256 callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
-            uint256 treasuryFeeToVault = (nativeFee * treasuryFee) / PERCENT_DIVISOR;
+
+        uint256 beforeSwapBal = IERC20Upgradeable(feesToken).balanceOf(address(this));
+        _swap(nativeFee, nativeToFeesRoute);
+        uint256 fees = IERC20Upgradeable(feesToken).balanceOf(address(this)) - beforeSwapBal;
+
+        if (fees != 0) {
+            uint256 callFeeToUser = (fees * callFee) / PERCENT_DIVISOR;
+            uint256 treasuryFeeToVault = (fees * treasuryFee) / PERCENT_DIVISOR;
             uint256 feeToStrategist = (treasuryFeeToVault * strategistFee) / PERCENT_DIVISOR;
             treasuryFeeToVault -= feeToStrategist;
 
-            IERC20Upgradeable(nativeToken).safeTransfer(msg.sender, callFeeToUser);
-            IERC20Upgradeable(nativeToken).safeTransfer(treasury, treasuryFeeToVault);
-            IERC20Upgradeable(nativeToken).safeTransfer(strategistRemitter, feeToStrategist);
+            IERC20Upgradeable(feesToken).safeTransfer(msg.sender, callFeeToUser);
+            IERC20Upgradeable(feesToken).safeTransfer(treasury, treasuryFeeToVault);
+            IERC20Upgradeable(feesToken).safeTransfer(strategistRemitter, feeToStrategist);
         }
     }
 
@@ -270,10 +280,16 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      */
     function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
         uint256 rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(0, address(this));
-        if (rewards == 0) {
+        if (!isDualRewardActive && rewards == 0) {
             return (0, 0);
         }
-        profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
+        profit += IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
+        if (isDualRewardActive) {
+            rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(dualRewardIndex, address(this));
+            if (rewards != 0) {
+                profit += IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, dualRewardToNativeRoute)[1];
+            }
+        }
         uint256 nativeFee = (profit * totalFee) / PERCENT_DIVISOR;
         callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
         profit -= nativeFee;
@@ -370,17 +386,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev Sets the swap path to go from {nativeToken} to {want}.
-     */
-    function setNativeToWantRoute(address[] calldata _newNativeToWantRoute) external {
-        _atLeastRole(STRATEGIST);
-        require(_newNativeToWantRoute[0] == nativeToken, 'bad route');
-        require(_newNativeToWantRoute[_newNativeToWantRoute.length - 1] == want, 'bad route');
-        delete nativeToWantRoute;
-        nativeToWantRoute = _newNativeToWantRoute;
-    }
-
-    /**
      * @dev Configure variables for the dual reward
      */
     function configureDualReward(
@@ -390,8 +395,8 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         address[] calldata _newDualRewardToNativeRoute
     ) external {
         _atLeastRole(STRATEGIST);
-        require(_newDualRewardToNativeRoute[0] == _dualRewardToken, 'bad route');
-        require(_newDualRewardToNativeRoute[_newDualRewardToNativeRoute.length - 1] == nativeToken, 'bad route');
+        require(_newDualRewardToNativeRoute[0] == _dualRewardToken);
+        require(_newDualRewardToNativeRoute[_newDualRewardToNativeRoute.length - 1] == nativeToken);
         isDualRewardActive = _isDualRewardActive;
         dualRewardToken = _dualRewardToken;
         dualRewardIndex = _dualRewardIndex;
@@ -517,20 +522,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev This is the state changing calculation of LTV that is more accurate
-     * to be used internally.
-     */
-    function _calculateLTV() internal returns (uint256 ltv) {
-        uint256 supplied = cWant.balanceOfUnderlying(address(this));
-        uint256 borrowed = cWant.borrowBalanceStored(address(this));
-
-        if (supplied == 0 || borrowed == 0) {
-            return 0;
-        }
-        ltv = (MANTISSA * borrowed) / supplied;
-    }
-
-    /**
      * @dev Calculates what the LTV will be after withdrawing
      */
     function _calculateLTVAfterWithdraw(uint256 _withdrawAmount) internal returns (uint256 ltv) {
@@ -541,7 +532,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         if (supplied == 0 || borrowed == 0) {
             return 0;
         }
-        ltv = (uint256(1e18) * borrowed) / supplied;
+        ltv = (MANTISSA * borrowed) / supplied;
     }
 
     /**
@@ -681,7 +672,21 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
             cWant.repayBorrow(deleveragedAmount);
         }
     }
-
+    /** 
+     * @dev Gives the necessary allowances to mint cWant, swap rewards etc  
+     */ 
+    function _giveAllowances() internal {   
+        IERC20Upgradeable(want).safeIncreaseAllowance(  
+            address(cWant), 
+            type(uint256).max   
+        );  
+    }   
+    /** 
+     * @dev Removes all allowance that were given   
+     */ 
+    function _removeAllowances() internal { 
+        IERC20Upgradeable(want).safeDecreaseAllowance(address(cWant), IERC20Upgradeable(want).allowance(address(this), address(cWant)));
+    }
     /**
      * @dev Helper modifier for functions that need to update the internal balance at the end of their execution.
      */
