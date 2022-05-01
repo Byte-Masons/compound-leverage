@@ -128,7 +128,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     function _deposit() internal override doUpdateBalance {
         IERC20Upgradeable(want).safeIncreaseAllowance(address(cWant), balanceOfWant());
         CErc20I(cWant).mint(balanceOfWant());
-        uint256 _ltv = _calculateLTV();
+        uint256 _ltv = _calculateLTVAfterWithdraw(0);
 
         if (_shouldLeverage(_ltv)) {
             _leverMax();
@@ -533,20 +533,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev This is the state changing calculation of LTV that is more accurate
-     * to be used internally.
-     */
-    function _calculateLTV() internal returns (uint256 ltv) {
-        uint256 supplied = cWant.balanceOfUnderlying(address(this));
-        uint256 borrowed = cWant.borrowBalanceStored(address(this));
-
-        if (supplied == 0 || borrowed == 0) {
-            return 0;
-        }
-        ltv = (MANTISSA * borrowed) / supplied;
-    }
-
-    /**
      * @dev Calculates what the LTV will be after withdrawing
      */
     function _calculateLTVAfterWithdraw(uint256 _withdrawAmount) internal returns (uint256 ltv) {
@@ -557,7 +543,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         if (supplied == 0 || borrowed == 0) {
             return 0;
         }
-        ltv = (uint256(1e18) * borrowed) / supplied;
+        ltv = (MANTISSA * borrowed) / supplied;
     }
 
     /**
