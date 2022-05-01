@@ -17,12 +17,15 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
 
     /**
      * @dev Tokens Used:
-     * {nativeToken} - Required for liquidity routing when doing swaps. Also used to charge fees on yield.
+     * {nativeToken} - Required for liquidity routing when doing swaps.
+     * {feesToken} - Token in which fees is charged.
      * {rewardToken} - The reward token for farming
+     * {dualRewardToken} - Secondary reward token if applicable.
      * {want} - The vault token the strategy is maximizing
      * {cWant} - The Compound version of the want token
      */
-    address public constant nativeToken = address(0xC9BdeEd33CD01541e1eeD10f90519d2C06Fe3feB);
+    address public constant nativeToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
+    address public constant feesToken = address(0xB12BFcA5A55806AaF64E99521918A4bf0fC40802);
     address public constant rewardToken = address(0x9f1F933C660a1DC856F0E0Fe058435879c5CCEf0);
     address public dualRewardToken;
     address public want;
@@ -42,10 +45,12 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Routes we take to swap tokens
      * {rewardToNativeRoute} - Route we take to get from {rewardToken} into {nativeToken}.
      * {dualRewardToNativeRoute} - Route we take to get from {dualRewardToken} into {nativeToken}.
+     * {nativeToFeesRoute} - Route we take to get from {nativeToken} into {feesToken}.
      * {nativeToWantRoute} - Route we take to get from {nativeToken} into {want}.
      */
     address[] public rewardToNativeRoute;
     address[] public dualRewardToNativeRoute;
+    address[] public nativeToFeesRoute;
     address[] public nativeToWantRoute;
 
     /**
@@ -96,10 +101,11 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         markets = [_cWant];
         comptroller = IComptroller(cWant.comptroller());
         want = cWant.underlying();
-        nativeToWantRoute = [nativeToken, want];
         rewardToNativeRoute = [rewardToken, nativeToken];
+        nativeToFeesRoute = [nativeToken, feesToken];
+        nativeToWantRoute = [nativeToken, want];
 
-        targetLTV = 0.72 ether;
+        targetLTV = 0.83 ether;
         allowedLTVDrift = 0.01 ether;
         balanceOfPool = 0;
         borrowDepth = 12;
@@ -108,7 +114,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
         dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
-        dualRewardToNativeRoute = [dualRewardToken, nativeToken];
         isDualRewardActive = true;
         dualRewardIndex = 1;
 
@@ -222,15 +227,20 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      */
     function _chargeFees() internal {
         uint256 nativeFee = (IERC20Upgradeable(nativeToken).balanceOf(address(this)) * totalFee) / PERCENT_DIVISOR;
-        if (nativeFee != 0) {
-            uint256 callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
-            uint256 treasuryFeeToVault = (nativeFee * treasuryFee) / PERCENT_DIVISOR;
+
+        uint256 beforeSwapBal = IERC20Upgradeable(feesToken).balanceOf(address(this));
+        _swap(nativeFee, nativeToFeesRoute);
+        uint256 fees = IERC20Upgradeable(feesToken).balanceOf(address(this)) - beforeSwapBal;
+
+        if (fees != 0) {
+            uint256 callFeeToUser = (fees * callFee) / PERCENT_DIVISOR;
+            uint256 treasuryFeeToVault = (fees * treasuryFee) / PERCENT_DIVISOR;
             uint256 feeToStrategist = (treasuryFeeToVault * strategistFee) / PERCENT_DIVISOR;
             treasuryFeeToVault -= feeToStrategist;
 
-            IERC20Upgradeable(nativeToken).safeTransfer(msg.sender, callFeeToUser);
-            IERC20Upgradeable(nativeToken).safeTransfer(treasury, treasuryFeeToVault);
-            IERC20Upgradeable(nativeToken).safeTransfer(strategistRemitter, feeToStrategist);
+            IERC20Upgradeable(feesToken).safeTransfer(msg.sender, callFeeToUser);
+            IERC20Upgradeable(feesToken).safeTransfer(treasury, treasuryFeeToVault);
+            IERC20Upgradeable(feesToken).safeTransfer(strategistRemitter, feeToStrategist);
         }
     }
 
@@ -270,10 +280,16 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      */
     function estimateHarvest() external view override returns (uint256 profit, uint256 callFeeToUser) {
         uint256 rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(0, address(this));
-        if (rewards == 0) {
+        if (!isDualRewardActive && rewards == 0) {
             return (0, 0);
         }
-        profit = IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
+        profit += IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, rewardToNativeRoute)[1];
+        if (isDualRewardActive) {
+            rewards = IRewardDistributor(REWARD_DISTRIBUTOR).rewardAccrued(dualRewardIndex, address(this));
+            if (rewards != 0) {
+                profit += IUniswapRouter(UNI_ROUTER).getAmountsOut(rewards, dualRewardToNativeRoute)[1];
+            }
+        }
         uint256 nativeFee = (profit * totalFee) / PERCENT_DIVISOR;
         callFeeToUser = (nativeFee * callFee) / PERCENT_DIVISOR;
         profit -= nativeFee;
