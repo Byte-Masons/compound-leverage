@@ -116,7 +116,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
         isDualRewardActive = true;
         dualRewardIndex = 1;
-
+        _giveAllowances();
         comptroller.enterMarkets(markets);
     }
 
@@ -126,7 +126,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * It supplies {want} Compound to farm {rewardToken}
      */
     function _deposit() internal override doUpdateBalance {
-        IERC20Upgradeable(want).safeIncreaseAllowance(address(cWant), balanceOfWant());
         CErc20I(cWant).mint(balanceOfWant());
         uint256 _ltv = _calculateLTVAfterWithdraw(0);
 
@@ -672,7 +671,21 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
             cWant.repayBorrow(deleveragedAmount);
         }
     }
-
+    /** 
+     * @dev Gives the necessary allowances to mint cWant, swap rewards etc  
+     */ 
+    function _giveAllowances() internal {   
+        IERC20Upgradeable(want).safeIncreaseAllowance(  
+            address(cWant), 
+            type(uint256).max   
+        );  
+    }   
+    /** 
+     * @dev Removes all allowance that were given   
+     */ 
+    function _removeAllowances() internal { 
+        IERC20Upgradeable(want).safeDecreaseAllowance(address(cWant), IERC20Upgradeable(want).allowance(address(this), address(cWant)));
+    }
     /**
      * @dev Helper modifier for functions that need to update the internal balance at the end of their execution.
      */

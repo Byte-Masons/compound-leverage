@@ -41,8 +41,7 @@ describe('Vaults', function () {
       params: [
         {
           forking: {
-            jsonRpcUrl: 'https://mainnet.aurora.dev/GGa5BKpfzNSefWg7AEdnAbDTfHH2VSMhc6r5D7EsE6Ha',
-            blockNumber: 64604601,
+            jsonRpcUrl: 'https://mainnet.aurora.dev/'
           },
         },
       ],
@@ -177,7 +176,7 @@ describe('Vaults', function () {
       const ltv = await strategy.calculateLTV();
       console.log(`ltv: ${ltv}`);
       const allowedLTVDrift = toWantUnit('0.015');
-      expect(ltv).to.be.closeTo(toWantUnit('0.73'), allowedLTVDrift);
+      expect(ltv).to.be.closeTo(toWantUnit('0.83'), allowedLTVDrift);
     });
 
     xit('should trigger deleveraging on deposit when LTV is too high', async function () {
