@@ -16,7 +16,7 @@ const toWantUnit = (num, isUSDC = false) => {
   return ethers.utils.parseEther(num);
 };
 
-const assetSafeMaxLTV = '0.83';
+const assetSafeMaxLTV = '0.595';
 const getTargetLtv = async strategy => await strategy.targetLTV();
 
 describe('Vaults', function () {
@@ -135,7 +135,9 @@ describe('Vaults', function () {
       const newUserBalance = await want.balanceOf(selfAddress);
 
       const deductedAmount = userBalance.sub(newUserBalance);
-      await vault.connect(self).deposit(depositAmount);
+      const tx = await vault.connect(self).deposit(depositAmount);
+      const receipt = await tx.wait();
+      console.log(`gas used ${receipt.gasUsed}`);
       expect(vaultBalance).to.equal(0);
       // // Compound mint reduces balance by a small amount
       // const smallDifference = depositAmount * 0.00000001; // For 1e18
@@ -201,9 +203,19 @@ describe('Vaults', function () {
     it('should allow withdrawals', async function () {
       const userBalance = await want.balanceOf(selfAddress);
       const depositAmount = toWantUnit('100', true);
-      await vault.connect(self).deposit(depositAmount);
+      let tx = await vault.connect(self).deposit(depositAmount);
+      let receipt = await tx.wait();
+      console.log(`deposit gas used ${receipt.gasUsed}`);
+      console.log(`strategy balance ${await strategy.balanceOf()}`)
+      let ltv = await strategy.calculateLTV();
+      console.log(`LTV after deposit ${ltv.toString()}`);
 
-      await vault.connect(self).withdrawAll();
+      tx = await vault.connect(self).withdrawAll();
+      receipt = await tx.wait();
+      console.log(`withdraw gas used ${receipt.gasUsed}`);
+      ltv = await strategy.calculateLTV();
+      console.log(`strategy balance ${await strategy.balanceOf()}`)
+      console.log(`LTV after withdraw ${ltv.toString()}`);
       const newUserVaultBalance = await vault.balanceOf(selfAddress);
       const userBalanceAfterWithdraw = await want.balanceOf(selfAddress);
       const expectedBalance = userBalance;
@@ -313,9 +325,19 @@ describe('Vaults', function () {
     });
 
     it('should be able to harvest', async function () {
-      await vault.connect(self).deposit(toWantUnit('1000', true));
-      const estimatedGas = await strategy.estimateGas.harvest();
-      await strategy.connect(self).harvest();
+      let tx = await vault.connect(self).deposit(toWantUnit('1000', true));
+      let receipt = await tx.wait();
+      console.log(`deposit gas used ${receipt.gasUsed}`);
+      console.log(`strategy balance ${await strategy.balanceOf()}`);
+      await moveTimeForward(3600);
+      tx = await strategy.connect(self).harvest();
+      receipt = await tx.wait();
+      console.log(`harvest gas used ${receipt.gasUsed}`);
+
+      tx = await strategy.deposit();
+      receipt = await tx.wait();
+      console.log(`deposit gas used ${receipt.gasUsed}`);
+      console.log(`strategy balance ${await strategy.balanceOf()}`);
     });
 
     it('should provide yield', async function () {
@@ -343,7 +365,7 @@ describe('Vaults', function () {
     });
   });
 
-  describe('Strategy', function () {
+  xdescribe('Strategy', function () {
     it('should be able to pause and unpause', async function () {
       await strategy.pause();
       const depositAmount = toWantUnit('.5', true);
