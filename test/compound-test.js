@@ -29,8 +29,8 @@ describe('Vaults', function () {
   const paymentSplitterAddress = '0x63cbd4134c2253041F370472c130e92daE4Ff174';
   let treasury;
   let want;
-  const wantAddress = '0xb12bfca5a55806aaf64e99521918a4bf0fc40802';
-  const scWantAddress = '0xe5308dc623101508952948b141fd9eabd3337d99';
+  const wantAddress = '0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d';
+  const scWantAddress = '0x8C14ea853321028a7bb5E4FB0d0147F183d3B677';
   let self;
   let wantWhale;
   let selfAddress;
@@ -51,8 +51,8 @@ describe('Vaults', function () {
     });
     // get signers
     [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
-    const wantHolder = '0xab57baBf2cE17f8a7661Cbc24fc515CeA77f930B';
-    const wantWhaleAddress = '0x1d50a8c3295798fcebddd0c720bec4fbedc3d178';
+    const wantHolder = '0xbc8a244e8fb683ec1fd6f88f3cc6e565082174eb';
+    const wantWhaleAddress = '0x63da4db6ef4e7c62168ab03982399f9588fcd198';
     const strategistAddress = '0x3b410908e71Ee04e7dE2a87f8F9003AFe6c1c7cE';
     await hre.network.provider.request({
       method: 'hardhat_impersonateAccount',
@@ -105,6 +105,16 @@ describe('Vaults', function () {
     await strategy.deployed();
 
     await vault.initialize(strategy.address);
+
+    owner.sendTransaction({
+      to: wantHolder,
+      value: ethers.utils.parseEther('1.0'),
+    });
+
+    owner.sendTransaction({
+      to: wantWhale,
+      value: ethers.utils.parseEther('1.0'),
+    });
 
     // approving LP token and vault share spend
     await want.approve(vault.address, ethers.utils.parseEther('1000000000'));

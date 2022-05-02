@@ -108,14 +108,12 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         allowedLTVDrift = 0.01 ether;
         setTargetLtv(type(uint256).max);
         balanceOfPool = 0;
-        borrowDepth = 12;
+        borrowDepth = 2;
         minWantToLeverage = 1000;
         maxBorrowDepth = 15;
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
-        dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
-        isDualRewardActive = true;
-        dualRewardIndex = 1;
+        isDualRewardActive = false;
         _giveAllowances();
         comptroller.enterMarkets(markets);
     }
