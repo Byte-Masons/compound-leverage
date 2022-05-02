@@ -57,16 +57,15 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Compound variables
      * {markets} - Contains the Compound tokens to farm, used to enter markets and claim Compound
      * {MANTISSA} - The unit used by the Compound protocol
-     * {LTV_SAFETY_ZONE} - We will only go up to 70% of max allowed LTV for {targetLTV}
      * {MAX_BORROW_DEPTH} - The limit on the maximum amount of loops used to leverage and deleverage
      */
     address[] public markets;
     uint256 public constant MANTISSA = 1e18;
-    uint256 public constant LTV_SAFETY_ZONE = 0.70 ether;
     uint256 public constant MAX_BORROW_DEPTH = 15;
 
     /**
      * @dev Strategy variables
+     * {ltvSafetyZone} - The highest we will set {targetLTV} as a proportion of the allowed max LTV.
      * {targetLTV} - The target loan to value for the strategy where 1 ether = 100%
      * {allowedLTVDrift} - How much the strategy can deviate from the target ltv where 0.01 ether = 1%
      * {balanceOfPool} - The total balance deposited into Compound (supplied - borrowed)
@@ -77,6 +76,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * {isDualRewardActive} - Maximum slippage authorized when withdrawing
      * {dualRewardIndex} - The index of the dual reward in the reward distributor
      */
+    uint256 public ltvSafetyZone;
     uint256 public targetLTV;
     uint256 public allowedLTVDrift;
     uint256 public balanceOfPool;
@@ -107,6 +107,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         nativeToFeesRoute = [nativeToken, feesToken];
         nativeToWantRoute = [nativeToken, want];
 
+        ltvSafetyZone = 0.70 ether;
         allowedLTVDrift = 0.01 ether;
         setTargetLtv(type(uint256).max);
         balanceOfPool = 0;
@@ -330,13 +331,23 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     function setTargetLtv(uint256 _ltv) public {
         _atLeastRole(KEEPER);
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
-        uint256 maxSafeLTV = (collateralFactorMantissa * LTV_SAFETY_ZONE) / MANTISSA;
+        uint256 maxSafeLTV = (collateralFactorMantissa * ltvSafetyZone) / MANTISSA;
         if (_ltv > maxSafeLTV) {
             _ltv = maxSafeLTV;
         }
 
         require(collateralFactorMantissa > _ltv + allowedLTVDrift);
         targetLTV = _ltv;
+    }
+
+    /**
+     * @dev Sets a new LTV safety zone for {targetLTV}.
+     * Should be in units of 1e18
+     */
+    function setLtvSafetyZone(uint256 _newLtvSafetyZone) external {
+        _atLeastRole(STRATEGIST);
+        require(_newLtvSafetyZone < 0.97 ether);
+        ltvSafetyZone = _newLtvSafetyZone;
     }
 
     /**
