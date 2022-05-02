@@ -40,10 +40,10 @@ const setTargetLTV = async () => {
 
 async function main() {
   await upgradeProxy();
-  //await clearUpgradeCooldown();
-  //await setSlippage();
-  //await setTargetLTV();
-  //await unpause();
+  // await clearUpgradeCooldown();
+  // await setSlippage();
+  // await setTargetLTV();
+  // await unpause();
 }
 
 main()
