@@ -57,29 +57,31 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Compound variables
      * {markets} - Contains the Compound tokens to farm, used to enter markets and claim Compound
      * {MANTISSA} - The unit used by the Compound protocol
-     * {LTV_SAFETY_ZONE} - We will only go up to 98% of max allowed LTV for {targetLTV}
+     * {MAX_BORROW_DEPTH} - The limit on the maximum amount of loops used to leverage and deleverage
      */
     address[] public markets;
     uint256 public constant MANTISSA = 1e18;
-    uint256 public constant LTV_SAFETY_ZONE = 0.97 ether;
+    uint256 public constant MAX_BORROW_DEPTH = 15;
 
     /**
      * @dev Strategy variables
+     * {ltvSafetyZone} - The highest we will set {targetLTV} as a proportion of the allowed max LTV.
      * {targetLTV} - The target loan to value for the strategy where 1 ether = 100%
      * {allowedLTVDrift} - How much the strategy can deviate from the target ltv where 0.01 ether = 1%
      * {balanceOfPool} - The total balance deposited into Compound (supplied - borrowed)
      * {borrowDepth} - The maximum amount of loops used to leverage and deleverage
      * {minWantToLeverage} - The minimum amount of want to leverage in a loop
+     * {minRewardToSell} - The minimum amount of reward to swap to {want} and redeposit
      * {withdrawSlippageTolerance} - Maximum slippage authorized when withdrawing
      * {isDualRewardActive} - Maximum slippage authorized when withdrawing
      * {dualRewardIndex} - The index of the dual reward in the reward distributor
      */
+    uint256 public ltvSafetyZone;
     uint256 public targetLTV;
     uint256 public allowedLTVDrift;
     uint256 public balanceOfPool;
     uint256 public borrowDepth;
     uint256 public minWantToLeverage;
-    uint256 public maxBorrowDepth;
     uint256 public minRewardToSell;
     uint256 public withdrawSlippageTolerance;
     bool public isDualRewardActive;
@@ -98,19 +100,19 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     ) public initializer {
         __ReaperBaseStrategy_init(_vault, _feeRemitters, _strategists, _multisigRoles);
         cWant = CErc20I(_cWant);
-        markets = [_cWant];
-        comptroller = IComptroller(cWant.comptroller());
         want = cWant.underlying();
+        comptroller = IComptroller(cWant.comptroller());
+        markets = [_cWant];
         rewardToNativeRoute = [rewardToken, nativeToken];
         nativeToFeesRoute = [nativeToken, feesToken];
         nativeToWantRoute = [nativeToken, want];
 
+        ltvSafetyZone = 0.70 ether;
         allowedLTVDrift = 0.01 ether;
         setTargetLtv(type(uint256).max);
         balanceOfPool = 0;
-        borrowDepth = 12;
+        borrowDepth = 2;
         minWantToLeverage = 1000;
-        maxBorrowDepth = 15;
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
         dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
@@ -166,14 +168,12 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * 2. Swaps {rewardToken} to {nativeToken}.
      * 3. Claims fees for the harvest caller and treasury.
      * 4. Swaps the {nativeToken} token for {want}
-     * 5. Deposits.
      */
     function _harvestCore() internal override {
         _claimRewards();
         _swapRewardsToNative();
         _chargeFees();
         _swapToWant();
-        deposit();
     }
 
     /**
@@ -206,10 +206,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Helper function to swap tokens given an {_amount} and swap {_path}.
      */
     function _swap(uint256 _amount, address[] memory _path) internal {
-        if (_path.length < 2 || _amount == 0 || (_path[0] == _path[_path.length - 1])) {
-            return;
-        }
-
         IERC20Upgradeable(_path[0]).safeIncreaseAllowance(UNI_ROUTER, _amount);
         IUniswapRouter(UNI_ROUTER).swapExactTokensForTokensSupportingFeeOnTransferTokens(
             _amount,
@@ -335,13 +331,23 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     function setTargetLtv(uint256 _ltv) public {
         _atLeastRole(KEEPER);
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
-        uint256 maxSafeLTV = (collateralFactorMantissa * LTV_SAFETY_ZONE) / MANTISSA;
+        uint256 maxSafeLTV = (collateralFactorMantissa * ltvSafetyZone) / MANTISSA;
         if (_ltv > maxSafeLTV) {
             _ltv = maxSafeLTV;
         }
 
         require(collateralFactorMantissa > _ltv + allowedLTVDrift);
         targetLTV = _ltv;
+    }
+
+    /**
+     * @dev Sets a new LTV safety zone for {targetLTV}.
+     * Should be in units of 1e18
+     */
+    function setLtvSafetyZone(uint256 _newLtvSafetyZone) external {
+        _atLeastRole(STRATEGIST);
+        require(_newLtvSafetyZone < 0.97 ether);
+        ltvSafetyZone = _newLtvSafetyZone;
     }
 
     /**
@@ -358,9 +364,9 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     /**
      * @dev Sets a new borrow depth (how many loops for leveraging+deleveraging)
      */
-    function setBorrowDepth(uint8 _borrowDepth) external {
+    function setBorrowDepth(uint256 _borrowDepth) external {
         _atLeastRole(STRATEGIST);
-        require(_borrowDepth <= maxBorrowDepth);
+        require(_borrowDepth <= MAX_BORROW_DEPTH);
         borrowDepth = _borrowDepth;
     }
 
@@ -462,16 +468,16 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         uint256 newBorrow = _getMaxBorrowFromSupplied(realSupply, targetLTV);
         uint256 totalAmountToBorrow = newBorrow - borrowed;
 
-        for (uint8 i = 0; i < borrowDepth && totalAmountToBorrow > minWantToLeverage; i++) {
-            totalAmountToBorrow = totalAmountToBorrow - _leverUpStep(totalAmountToBorrow);
+        for (uint256 i = 0; i < borrowDepth && totalAmountToBorrow > minWantToLeverage; i++) {
+            totalAmountToBorrow -= _leverUpStep(totalAmountToBorrow);
         }
     }
 
     /**
      * @dev Does one step of leveraging
      */
-    function _leverUpStep(uint256 _withdrawAmount) internal returns (uint256) {
-        if (_withdrawAmount == 0) {
+    function _leverUpStep(uint256 _borrowAmount) internal returns (uint256) {
+        if (_borrowAmount == 0) {
             return 0;
         }
 
@@ -482,19 +488,19 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
 
         canBorrow -= borrowed;
 
-        if (canBorrow < _withdrawAmount) {
-            _withdrawAmount = canBorrow;
+        if (canBorrow < _borrowAmount) {
+            _borrowAmount = canBorrow;
         }
 
-        if (_withdrawAmount > 10) {
+        if (_borrowAmount > 10) {
             // borrow available amount
-            CErc20I(cWant).borrow(_withdrawAmount);
+            CErc20I(cWant).borrow(_borrowAmount);
 
             // deposit available want as collateral
             CErc20I(cWant).mint(balanceOfWant());
         }
 
-        return _withdrawAmount;
+        return _borrowAmount;
     }
 
     /**
@@ -508,20 +514,14 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * @dev Returns if the strategy should leverage with the given ltv level
      */
     function _shouldLeverage(uint256 _ltv) internal view returns (bool) {
-        if (targetLTV >= allowedLTVDrift && _ltv < targetLTV - allowedLTVDrift) {
-            return true;
-        }
-        return false;
+        return (targetLTV >= allowedLTVDrift && _ltv < targetLTV - allowedLTVDrift);
     }
 
     /**
      * @dev Returns if the strategy should deleverage with the given ltv level
      */
     function _shouldDeleverage(uint256 _ltv) internal view returns (bool) {
-        if (_ltv > targetLTV + allowedLTVDrift) {
-            return true;
-        }
-        return false;
+        return (_ltv > targetLTV + allowedLTVDrift);
     }
 
     /**
@@ -556,13 +556,11 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         }
 
         uint256 tempColla = targetLTV + allowedLTVDrift;
-
-        uint256 reservedAmount = 0;
         if (tempColla == 0) {
             tempColla = 1e15; // 0.001 * 1e18. lower we have issues
         }
 
-        reservedAmount = (borrowed * MANTISSA) / tempColla;
+        uint256 reservedAmount = (borrowed * MANTISSA) / tempColla;
         if (supplied >= reservedAmount) {
             uint256 redeemable = supplied - reservedAmount;
             uint256 balance = cWant.balanceOf(address(this));
@@ -586,38 +584,27 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
     }
 
     /**
-     * @dev For a given withdraw amount, figures out the new borrow with the current supply
-     * that will maintain the target LTV
+     * @dev For a given withdraw amount, figures out how much we need to reduce borrow by to
+     * maintain LTV at targetLTV.
      */
-    function _getDesiredBorrow(uint256 _withdrawAmount) internal returns (uint256 position) {
-        //we want to use statechanging for safety
+    function _getBorrowDifference(uint256 _withdrawAmount) internal returns (uint256 difference) {
         uint256 supplied = cWant.balanceOfUnderlying(address(this));
         uint256 borrowed = cWant.borrowBalanceStored(address(this));
+        uint256 realSupply = supplied - borrowed;
 
-        //When we unwind we end up with the difference between borrow and supply
-        uint256 unwoundSupplied = supplied - borrowed;
-
-        //we want to see how close to collateral target we are.
-        //So we take our unwound supplied and add or remove the _withdrawAmount we are are adding/removing.
-        //This gives us our desired future undwoundDeposit (desired supply)
-
-        uint256 desiredSupply = 0;
-        if (_withdrawAmount > unwoundSupplied) {
-            _withdrawAmount = unwoundSupplied;
+        if (_withdrawAmount > realSupply) {
+            _withdrawAmount = realSupply;
         }
-        desiredSupply = unwoundSupplied - _withdrawAmount;
+        uint256 desiredSupply = realSupply - _withdrawAmount;
 
-        //(ds *c)/(1-c)
-        uint256 num = desiredSupply * targetLTV;
-        uint256 den = MANTISSA - targetLTV;
-
-        uint256 desiredBorrow = num / den;
+        // (ds *c)/(1-c)
+        uint256 desiredBorrow = (desiredSupply * targetLTV) / (MANTISSA - targetLTV);
         if (desiredBorrow > 1e5) {
             //stop us going right up to the wire
             desiredBorrow = desiredBorrow - 1e5;
         }
 
-        position = borrowed - desiredBorrow;
+        difference = borrowed - desiredBorrow;
     }
 
     /**
@@ -625,53 +612,40 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
      * that will maintain the target LTV
      */
     function _deleverage(uint256 _withdrawAmount) internal {
-        uint256 newBorrow = _getDesiredBorrow(_withdrawAmount);
+        uint256 borrowDifference = _getBorrowDifference(_withdrawAmount);
 
-        // //If there is no deficit we dont need to adjust position
-        // //if the position change is tiny do nothing
-        if (newBorrow > minWantToLeverage) {
-            uint256 i = 0;
-            while (newBorrow > minWantToLeverage + 100) {
-                newBorrow = newBorrow - _leverDownStep(newBorrow);
-                i++;
-                //A limit set so we don't run out of gas
-                if (i >= borrowDepth) {
-                    break;
-                }
-            }
+        for (uint256 i = 0; i < borrowDepth && borrowDifference > minWantToLeverage; i++) {
+            borrowDifference -= _leverDownStep(borrowDifference);
         }
     }
 
     /**
      * @dev Deleverages one step
      */
-    function _leverDownStep(uint256 maxDeleverage) internal returns (uint256 deleveragedAmount) {
-        uint256 minAllowedSupply = 0;
+    function _leverDownStep(uint256 _releaseAmount) internal returns (uint256 deleveragedAmount) {
         uint256 supplied = cWant.balanceOfUnderlying(address(this));
         uint256 borrowed = cWant.borrowBalanceStored(address(this));
         (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cWant));
 
-        //collat ration should never be 0. if it is something is very wrong... but just incase
-        if (collateralFactorMantissa != 0) {
-            minAllowedSupply = (borrowed * MANTISSA) / collateralFactorMantissa;
-        }
+        uint256 minAllowedSupply = (borrowed * MANTISSA) / collateralFactorMantissa;
         uint256 maxAllowedDeleverageAmount = supplied - minAllowedSupply;
 
         deleveragedAmount = maxAllowedDeleverageAmount;
 
-        if (deleveragedAmount >= borrowed) {
+        if (deleveragedAmount > borrowed) {
             deleveragedAmount = borrowed;
         }
-        if (deleveragedAmount >= maxDeleverage) {
-            deleveragedAmount = maxDeleverage;
+        if (deleveragedAmount > _releaseAmount) {
+            deleveragedAmount = _releaseAmount;
         }
+
         uint256 exchangeRateStored = cWant.exchangeRateStored();
-        //redeemTokens = redeemAmountIn * 1e18 / exchangeRate. must be more than 0
-        //a rounding error means we need another small addition
+        // redeemTokens = redeemAmountIn * 1e18 / exchangeRate. must be more than 0
+        // a rounding error means we need another small addition
         if (deleveragedAmount * MANTISSA >= exchangeRateStored && deleveragedAmount > 10) {
             deleveragedAmount -= 10; // Amount can be slightly off for tokens with less decimals (USDC), so redeem a bit less
             cWant.redeemUnderlying(deleveragedAmount);
-            //our borrow has been increased by no more than maxDeleverage
+            // our borrow has been increased by no more than _releaseAmount
             cWant.repayBorrow(deleveragedAmount);
         }
     }
