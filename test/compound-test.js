@@ -10,13 +10,13 @@ const moveTimeForward = async seconds => {
 };
 
 const toWantUnit = (num, isUSDC = false) => {
-  if (isUSDC) {
-    return ethers.BigNumber.from(num * 10 ** 6);
-  }
+  // if (isUSDC) {
+  //   return ethers.BigNumber.from(num * 10 ** 6);
+  // }
   return ethers.utils.parseEther(num);
 };
 
-const assetSafeMaxLTV = '0.595';
+const assetSafeMaxLTV = '0.49';
 const getTargetLtv = async strategy => await strategy.targetLTV();
 
 describe('Vaults', function () {
@@ -29,8 +29,8 @@ describe('Vaults', function () {
   const paymentSplitterAddress = '0x63cbd4134c2253041F370472c130e92daE4Ff174';
   let treasury;
   let want;
-  const wantAddress = '0xb12bfca5a55806aaf64e99521918a4bf0fc40802';
-  const scWantAddress = '0xe5308dc623101508952948b141fd9eabd3337d99';
+  const wantAddress = '0xC9BdeEd33CD01541e1eeD10f90519d2C06Fe3feB';
+  const scWantAddress = '0x4E8fE8fd314cFC09BDb0942c5adCC37431abDCD0';
   let self;
   let wantWhale;
   let selfAddress;
@@ -51,8 +51,8 @@ describe('Vaults', function () {
     });
     // get signers
     [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
-    const wantHolder = '0xab57baBf2cE17f8a7661Cbc24fc515CeA77f930B';
-    const wantWhaleAddress = '0x1d50a8c3295798fcebddd0c720bec4fbedc3d178';
+    const wantHolder = '0xf56997948d4235514Dcc50fC0EA7C0e110EC255d';
+    const wantWhaleAddress = '0x5eeC60F348cB1D661E4A5122CF4638c7DB7A886e';
     const strategistAddress = '0x3b410908e71Ee04e7dE2a87f8F9003AFe6c1c7cE';
     await hre.network.provider.request({
       method: 'hardhat_impersonateAccount',
@@ -102,6 +102,7 @@ describe('Vaults', function () {
       ],
       { kind: 'uups' },
     );
+    console.log('hmm');
     await strategy.deployed();
 
     await vault.initialize(strategy.address);
@@ -112,7 +113,7 @@ describe('Vaults', function () {
     await want.connect(self).approve(vault.address, ethers.utils.parseEther('1000000000'));
   });
 
-  xdescribe('Deploying the vault and strategy', function () {
+  describe('Deploying the vault and strategy', function () {
     it('should initiate vault with a 0 balance', async function () {
       const totalBalance = await vault.balance();
       const availableBalance = await vault.available();
@@ -122,6 +123,30 @@ describe('Vaults', function () {
       const decimals = await vault.decimals();
       const expectedPrice = decimals == 18 ? ethers.utils.parseEther('1') : ethers.BigNumber.from(10 ** decimals);
       expect(pricePerFullShare).to.equal(expectedPrice);
+    });
+
+    it('should allow deposits and account for them correctly', async function () {
+      const userBalance = await want.balanceOf(selfAddress);
+      const vaultBalance = await vault.balance();
+      const depositAmount = toWantUnit('10', true);
+      await vault.connect(self).deposit(depositAmount);
+      const newVaultBalance = await vault.balance();
+      const newUserBalance = await want.balanceOf(selfAddress);
+
+      const deductedAmount = userBalance.sub(newUserBalance);
+      const tx = await vault.connect(self).deposit(depositAmount);
+      const receipt = await tx.wait();
+      console.log(`gas used ${receipt.gasUsed}`);
+      expect(vaultBalance).to.equal(0);
+      // // Compound mint reduces balance by a small amount
+      // const smallDifference = depositAmount * 0.00000001; // For 1e18
+      const smallDifference = depositAmount * 0.000001; // For USDC or want with smaller decimals allow bigger difference
+      const isSmallBalanceDifference = depositAmount.sub(newVaultBalance) < smallDifference;
+      expect(isSmallBalanceDifference).to.equal(true);
+
+      const ltv = await strategy.calculateLTV();
+      const allowedLTVDrift = toWantUnit('0.015');
+      expect(ltv).to.be.closeTo(toWantUnit(assetSafeMaxLTV), allowedLTVDrift);
     });
   });
 
