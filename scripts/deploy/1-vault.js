@@ -1,9 +1,9 @@
 async function main() {
   const Vault = await ethers.getContractFactory('ReaperVaultv1_3');
 
-  const wantAddress = '0xB12BFcA5A55806AaF64E99521918A4bf0fC40802';
-  const tokenName = 'USDC Bastion Crypt';
-  const tokenSymbol = 'rf-cUSDC';
+  const wantAddress = '0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d';
+  const tokenName = 'NEAR Bastion Crypt';
+  const tokenSymbol = 'rf-cNEAR';
   const depositFee = 0;
   const tvlCap = ethers.constants.MaxUint256;
 
