@@ -107,7 +107,7 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         nativeToFeesRoute = [nativeToken, feesToken];
         nativeToWantRoute = [nativeToken, want];
 
-        ltvSafetyZone = 0.70 ether;
+        ltvSafetyZone = 0.80 ether;
         allowedLTVDrift = 0.01 ether;
         setTargetLtv(type(uint256).max);
         balanceOfPool = 0;
@@ -193,6 +193,11 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         if (rewardBalance >= minRewardToSell) {
             _swap(rewardBalance, rewardToNativeRoute);
         }
+
+        if (dualRewardToken == address(0)) {
+            return;
+        }
+
         uint256 dualRewardBalance = IERC20Upgradeable(dualRewardToken).balanceOf(address(this));
         if (dualRewardBalance >= minRewardToSell && nativeToken != dualRewardToken) {
             _swap(dualRewardBalance, dualRewardToNativeRoute);
