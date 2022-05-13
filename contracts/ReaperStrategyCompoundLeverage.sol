@@ -115,9 +115,6 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         minWantToLeverage = 1000;
         minRewardToSell = 1000;
         withdrawSlippageTolerance = 50;
-        dualRewardToken = address(0xC42C30aC6Cc15faC9bD938618BcaA1a1FaE8501d);
-        isDualRewardActive = true;
-        dualRewardIndex = 1;
         _giveAllowances();
         comptroller.enterMarkets(markets);
     }
