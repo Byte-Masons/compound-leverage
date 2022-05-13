@@ -193,6 +193,11 @@ contract ReaperStrategyCompoundLeverage is ReaperBaseStrategyv2 {
         if (rewardBalance >= minRewardToSell) {
             _swap(rewardBalance, rewardToNativeRoute);
         }
+
+        if (dualRewardToken == address(0)) {
+            return;
+        }
+
         uint256 dualRewardBalance = IERC20Upgradeable(dualRewardToken).balanceOf(address(this));
         if (dualRewardBalance >= minRewardToSell && nativeToken != dualRewardToken) {
             _swap(dualRewardBalance, dualRewardToNativeRoute);

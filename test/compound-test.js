@@ -16,7 +16,7 @@ const toWantUnit = (num, isUSDC = false) => {
   return ethers.utils.parseEther(num);
 };
 
-const assetSafeMaxLTV = '0.595';
+const assetSafeMaxLTV = '0.56';
 const getTargetLtv = async strategy => await strategy.targetLTV();
 
 describe('Vaults', function () {
@@ -29,8 +29,8 @@ describe('Vaults', function () {
   const paymentSplitterAddress = '0x63cbd4134c2253041F370472c130e92daE4Ff174';
   let treasury;
   let want;
-  const wantAddress = '0xb12bfca5a55806aaf64e99521918a4bf0fc40802';
-  const scWantAddress = '0xe5308dc623101508952948b141fd9eabd3337d99';
+  const wantAddress = '0x4988a896b1227218e4A686fdE5EabdcAbd91571f';
+  const scWantAddress = '0x845E15A441CFC1871B7AC610b0E922019BaD9826';
   let self;
   let wantWhale;
   let selfAddress;
@@ -51,8 +51,8 @@ describe('Vaults', function () {
     });
     // get signers
     [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
-    const wantHolder = '0xab57baBf2cE17f8a7661Cbc24fc515CeA77f930B';
-    const wantWhaleAddress = '0x1d50a8c3295798fcebddd0c720bec4fbedc3d178';
+    const wantHolder = '0xbC1631afCB916bda28aF42955Fc970Bf004596F8';
+    const wantWhaleAddress = '0xdC93d15DAf868F08e18d0646c62667410F1f212a';
     const strategistAddress = '0x3b410908e71Ee04e7dE2a87f8F9003AFe6c1c7cE';
     await hre.network.provider.request({
       method: 'hardhat_impersonateAccount',
